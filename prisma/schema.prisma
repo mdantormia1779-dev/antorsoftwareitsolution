@@ -1,0 +1,315 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// --------------------------------------
+// ENUMS
+// --------------------------------------
+
+enum Role {
+  ADMIN
+  MANAGER
+  EMPLOYEE
+}
+
+enum Status {
+  ACTIVE
+  INACTIVE
+}
+
+enum AttendanceStatus {
+  PRESENT
+  LATE
+  ABSENT
+  ON_LEAVE
+}
+
+enum FaceStatus {
+  VERIFIED
+  PENDING
+  FAILED
+}
+
+enum QueueStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum NotificationPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+// --------------------------------------
+// MODELS
+// --------------------------------------
+
+// 🏢 Organization Model (Multi-tenant support)
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  industry  String?
+  timezone  String   @default("UTC")
+  address   String?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  branches      Branch[]
+  users         User[]
+  notifications Notification[]
+
+  @@map("organizations")
+}
+
+// 👑 Admin Model (Firebase UID বা সেপারেট এডমিন অ্যাকাউন্ট)
+model Admin {
+  id          String   @id // Firebase UID
+  email       String   @unique
+  fullName    String
+  companyName String
+  role        String   @default("ADMIN")
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("admins")
+}
+
+// 👤 User Model (Employee & Manager)
+model User {
+  id             String   @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  empCode        String   @unique 
+  fullName       String
+  email          String   @unique
+  phone          String?
+  pin            String   
+  role           Role     @default(EMPLOYEE)
+  
+  // Job & Company Details
+  companyName    String?
+  branchId       String?  
+  branchRef      Branch?  @relation("BranchEmployees", fields: [branchId], references: [id], onDelete: SetNull)
+  
+  managedBranch  Branch?  @relation("BranchManager")
+
+  department     String   @default("Engineering")
+  designation    String   @default("Frontend Developer")
+  joiningDate    DateTime @default(now())
+  status         Status   @default(ACTIVE)
+
+  // Profile Visuals & Face Verification
+  avatar          String?  
+  avatarColor     String?  
+  initials        String?  
+  faceStatus      FaceStatus @default(PENDING)
+  faceEmbeddingId String?
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  attendances           Attendance[]
+  faceVerifications     FaceVerification[]
+  geoVerifications      GeoVerification[]
+  verificationDecisions VerificationQueue[] @relation("ManagerDecisions")
+  verificationQueueItems VerificationQueue[] @relation("QueueEmployee")
+  auditLogs             AuditLog[]
+  createdNotifications  Notification[]
+
+  @@map("users")
+}
+
+// 🏠 Branch Model
+model Branch {
+  id             String   @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  name           String   @unique
+  address        String
+  latitude       Float    @default(0.0)
+  longitude      Float    @default(0.0)
+  geofenceRadius Int      @default(150)
+  startTime      String   @default("09:00 AM")
+  endTime        String   @default("06:00 PM")
+  weeklyHolidays String[] @default(["Sat", "Sun"])
+  
+  managerId      String?  @unique
+  manager        User?    @relation("BranchManager", fields: [managerId], references: [id], onDelete: SetNull)
+
+  employees      User[]   @relation("BranchEmployees")
+  attendances    Attendance[]
+  verificationQueues VerificationQueue[]
+  notifications  Notification[]
+
+  score          Int      @default(100)
+  presentRate    String   @default("100%")
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("branches")
+}
+
+// ⏱️ Attendance Model
+model Attendance {
+  id        String           @id @default(uuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branchId  String
+  branch    Branch           @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  
+  date      DateTime         @default(now())
+  checkIn   DateTime?
+  checkOut  DateTime?
+  
+  checkInFaceVerificationId  String?
+  checkInFaceVerification    FaceVerification? @relation("CheckInFaceVerification", fields: [checkInFaceVerificationId], references: [id], onDelete: SetNull)
+  
+  checkInGeoVerificationId   String?
+  checkInGeoVerification     GeoVerification?  @relation("CheckInGeoVerification", fields: [checkInGeoVerificationId], references: [id], onDelete: SetNull)
+  
+  checkOutFaceVerificationId String?
+  checkOutFaceVerification   FaceVerification? @relation("CheckOutFaceVerification", fields: [checkOutFaceVerificationId], references: [id], onDelete: SetNull)
+  
+  checkOutGeoVerificationId  String?
+  checkOutGeoVerification    GeoVerification?  @relation("CheckOutGeoVerification", fields: [checkOutGeoVerificationId], references: [id], onDelete: SetNull)
+
+  isLate          Boolean          @default(false)
+  hours           Float?           // Total working hours in decimals (e.g., 8.5)
+  overtimeMinutes Int              @default(0)
+  lateMinutes     Int              @default(0)
+  status          AttendanceStatus @default(PRESENT)
+
+  verificationQueue VerificationQueue[]
+
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@unique([userId, date])
+  @@map("attendances") 
+}
+
+// 📸 Face Verifications Log
+model FaceVerification {
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  matchScore   Float
+  result       String   // "VERIFIED" or "FAILED"
+  capturedAt   DateTime @default(now())
+  providerRef  String?
+
+  checkInAttendances  Attendance[] @relation("CheckInFaceVerification")
+  checkOutAttendances Attendance[] @relation("CheckOutFaceVerification")
+  verificationQueues  VerificationQueue[]
+
+  @@map("face_verifications")
+}
+
+// 📍 Geo Verifications Log
+model GeoVerification {
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branchId     String
+  
+  latitude     Float
+  longitude    Float
+  distanceM    Float
+  withinRadius Boolean
+  accuracyM    Float?
+  capturedAt   DateTime @default(now())
+
+  checkInAttendances  Attendance[] @relation("CheckInGeoVerification")
+  checkOutAttendances Attendance[] @relation("CheckOutGeoVerification")
+  verificationQueues  VerificationQueue[]
+
+  @@map("geo_verifications")
+}
+
+// ⏳ Verification Queue (Manager Approval)
+model VerificationQueue {
+  id                 String        @id @default(uuid())
+  userId             String
+  user               User          @relation("QueueEmployee", fields: [userId], references: [id], onDelete: Cascade)
+  branchId           String
+  branch             Branch        @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  attendanceId       String
+  attendance         Attendance    @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+  
+  faceVerificationId String?
+  faceVerification   FaceVerification? @relation(fields: [faceVerificationId], references: [id], onDelete: SetNull)
+  
+  geoVerificationId  String?
+  geoVerification    GeoVerification?  @relation(fields: [geoVerificationId], references: [id], onDelete: SetNull)
+  
+  status             QueueStatus   @default(PENDING)
+  decidedBy          String?
+  decisionMaker      User?         @relation("ManagerDecisions", fields: [decidedBy], references: [id], onDelete: SetNull)
+  decidedAt          DateTime?
+  
+  createdAt          DateTime      @default(now())
+
+  @@map("verification_queue")
+}
+
+// 🔔 Notifications Model
+model Notification {
+  id             String               @id @default(uuid())
+  organizationId String
+  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branchId       String?              // Null = all branches
+  branch         Branch?              @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  
+  title          String
+  body           String
+  priority       NotificationPriority @default(MEDIUM)
+  imageUrl       String?
+  
+  createdById    String
+  createdBy      User                 @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  
+  reads          NotificationRead[]
+
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  @@map("notifications")
+}
+
+// 📖 Notification Read Status
+model NotificationRead {
+  id             String       @id @default(uuid())
+  notificationId String
+  notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  userId         String
+  readAt         DateTime     @default(now())
+
+  @@unique([notificationId, userId])
+  @@map("notification_reads")
+}
+
+// 🛠️ Audit Logs
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String
+  actor      User     @relation(fields: [actorId], references: [id], onDelete: Cascade)
+  action     String
+  entityType String
+  entityId   String
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@map("audit_logs")
+}
