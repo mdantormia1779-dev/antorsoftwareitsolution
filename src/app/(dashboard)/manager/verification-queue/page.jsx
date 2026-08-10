@@ -1,41 +1,97 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Check, X, Clock, MapPin, ScanFace } from 'lucide-react';
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 const VerificationQueuePage = () => {
-  // স্ক্রিনশটের তথ্য অনুযায়ী স্টেট
-  const [queueItems, setQueueItems] = useState([
-    {
-      id: 1,
-      name: 'Owen Marsh',
-      initials: 'OM',
-      avatarBg: 'bg-rose-600',
-      branch: 'Westline Hub',
-      matchScore: '54% match',
-      isMatchGood: false,
-      locationStatus: 'Outside radius',
-      isLocationGood: false,
-      time: '09:44 AM',
-    },
-    {
-      id: 2,
-      name: 'Isla Fontaine',
-      initials: 'IF',
-      avatarBg: 'bg-emerald-600',
-      branch: 'Westline Hub',
-      matchScore: '99% match',
-      isMatchGood: true,
-      locationStatus: 'Verified',
-      isLocationGood: true,
-      time: '09:47 AM',
-    },
-  ]);
+  const [queueItems, setQueueItems] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  // Approve বা Reject করার পর কিউ থেকে সরানোর হ্যান্ডলার
-  const handleAction = (id) => {
-    setQueueItems((prev) => prev.filter((item) => item.id !== id));
+  // ১. ব্যাকএন্ড থেকে পেন্ডিং ভেরিফিকেশন কিউ ফেচ করা
+  const fetchQueue = async () => {
+    try {
+      setLoading(true);
+      // প্রয়োজনমতো ?branchId=... বা ?status=PENDING যুক্ত করতে পারেন
+      const res = await fetch('/api/verification-queue?status=PENDING');
+      const result = await res.json();
+      
+      const rawList = Array.isArray(result) ? result : (result.data || []);
+
+      if (Array.isArray(rawList)) {
+        const formatted = rawList.map((item, index) => {
+          const fullName = item.user?.fullName || 'Unknown User';
+          const nameParts = fullName.trim().split(' ');
+          let initials = 'UU';
+          if (nameParts.length >= 2) {
+            initials = `${nameParts[0][0]}${nameParts[1][0]}`.toUpperCase();
+          } else if (nameParts.length === 1 && nameParts[0].length > 0) {
+            initials = nameParts[0].substring(0, 2).toUpperCase();
+          }
+
+          const bgColors = ['bg-blue-600', 'bg-emerald-600', 'bg-rose-600', 'bg-violet-600', 'bg-amber-600'];
+
+          // সময় ফরম্যাট করা (যেমন: createdAt থেকে)
+          const timeString = item.createdAt 
+            ? new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
+            : '—';
+
+          return {
+            id: item.id, // verificationQueue id
+            name: fullName,
+            initials: initials,
+            avatarBg: bgColors[index % bgColors.length],
+            branch: item.branch?.name || 'Main Branch',
+            matchScore: item.matchScore ? `${item.matchScore}% match` : 'N/A',
+            isMatchGood: item.matchScore ? item.matchScore >= 80 : true,
+            locationStatus: item.locationStatus || 'Verified',
+            isLocationGood: item.locationStatus === 'Verified',
+            time: timeString,
+          };
+        });
+
+        setQueueItems(formatted);
+      }
+    } catch (error) {
+      console.error('Error fetching verification queue:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchQueue();
+  }, []);
+
+  // ২. Approve বা Reject হ্যান্ডলার (ব্যাকএন্ডে PATCH রিকোয়েস্ট পাঠানো)
+  const handleAction = async (queueId, status) => {
+    try {
+      // আপনার ব্যাকএন্ডে 'decidedBy' আইডি প্রয়োজন (এখানে একটি ডামি ইউজার আইডি দেওয়া হয়েছে, আপনার প্রজেক্টের লগইন করা ম্যানেজারের আইডি এখানে বসাবেন)
+      const decidedBy = 'current-manager-user-id'; 
+
+      const res = await fetch('/api/verification-queue', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          queueId,
+          status, // "APPROVED" অথবা "REJECTED"
+          decidedBy,
+        }),
+      });
+
+      const result = await res.json();
+
+      if (result.success) {
+        // সফলভাবে আপডেট হলে লোকাল স্টেট থেকে রিমুভ করে দেব
+        setQueueItems((prev) => prev.filter((item) => item.id !== queueId));
+      } else {
+        alert(result.message || 'Action failed!');
+      }
+    } catch (error) {
+      console.error('Error updating queue status:', error);
+    }
   };
 
   return (
@@ -53,7 +109,11 @@ const VerificationQueuePage = () => {
 
       {/* Queue List Cards */}
       <div className="space-y-3">
-        {queueItems.length > 0 ? (
+        {loading ? (
+          <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center text-slate-400 font-medium text-xs sm:text-sm">
+            Loading pending verifications...
+          </div>
+        ) : queueItems.length > 0 ? (
           queueItems.map((item) => (
             <div
               key={item.id}
@@ -105,18 +165,18 @@ const VerificationQueuePage = () => {
               {/* Action Buttons */}
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => handleAction(item.id)}
+                  onClick={() => handleAction(item.id, 'APPROVED')}
                   className="p-2.5 rounded-xl bg-emerald-100/70 hover:bg-emerald-200/70 text-emerald-600 transition-colors cursor-pointer"
                   title="Approve"
                 >
-                  <Check className="w-4 h-4 stroke-[2.5]" />
+                  <Check className="main-check w-4 h-4 stroke-[2.5]" />
                 </button>
                 <button
-                  onClick={() => handleAction(item.id)}
+                  onClick={() => handleAction(item.id, 'REJECTED')}
                   className="p-2.5 rounded-xl bg-rose-100/70 hover:bg-rose-200/70 text-rose-500 transition-colors cursor-pointer"
                   title="Reject"
                 >
-                  <X className="w-4 h-4 stroke-[2.5]" />
+                  <X className="main-x w-4 h-4 stroke-[2.5]" />
                 </button>
               </div>
             </div>

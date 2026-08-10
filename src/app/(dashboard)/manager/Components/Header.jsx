@@ -1,30 +1,39 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { usePathname } from 'next/navigation';
 import { Sun, Bell, X } from 'lucide-react';
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import Sidebar from './Components/Sidebar';
-import Header from './Components/Header';
 
-export default function ManagerLayout({ children }) {
-  const [isCollapsed, setIsCollapsed] = useState(false);
-  const pathname = usePathname();
-
-  // নোটিফিকেশন ড্রয়ার এবং ডাটার জন্য স্টেটসমূহ
+const Header = ({ title }) => {
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(false);
+  
+  // পড়া হয়ে যাওয়া নোটিফিকেশনগুলোর আইডি স্টোর করার স্টেট
   const [readNotificationIds, setReadNotificationIds] = useState([]);
 
-  // ম্যানেজার বা ইউজার ডাটার জন্য স্টেট
-  const [managerData, setManagerData] = useState({
-    fullName: 'Priya Nair',
-    email: '',
-    role: 'Branch Manager'
+  // লোকাল স্টোরেজ থেকে ম্যানেজার/ইউজার ডাটা লোড করে ইনিশিয়াল স্টেট সেট করা
+  const [managerData, setManagerData] = useState(() => {
+    try {
+      const stored = localStorage.getItem('user');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        return {
+          fullName: parsed.fullName || 'MD ANTOR MIA',
+          email: parsed.email || '',
+          role: parsed.role || 'MANAGER'
+        };
+      }
+    } catch (e) {
+      console.error('Failed to parse user from localStorage', e);
+    }
+    return {
+      fullName: 'MD ANTOR MIA',
+      email: '',
+      role: 'MANAGER'
+    };
   });
 
-  // লোকাল স্টোরেজ থেকে পূর্বে পড়া নোটিফিকেশন আইডি লোড করা
+  // লোকাল স্টোরেজ থেকে অলরেডি পড়া নোটিফিকেশন আইডিগুলো লোড করা
   useEffect(() => {
     try {
       const savedRead = localStorage.getItem('read_notifications');
@@ -36,32 +45,42 @@ export default function ManagerLayout({ children }) {
     }
   }, []);
 
-  // ম্যানেজার প্রোফাইল ডাটা লোড করার ফাংশন
+  // লোকাল স্টোরেজ ও ডাটাবেজ থেকে লেটেস্ট ইউজার ডাটা রিফ্রেশ করা
   const loadManagerData = async () => {
     try {
-      const storedManager = localStorage.getItem('manager') || localStorage.getItem('user');
-      if (!storedManager) return;
+      const storedUser = localStorage.getItem('user');
+      if (!storedUser) return;
 
-      const parsed = JSON.parse(storedManager);
-      const email = parsed.email;
-      if (!email) return;
-
-      const res = await fetch(`/api/auth/me?email=${encodeURIComponent(email)}`);
-      const result = await res.json();
-
-      if (result.success && result.data) {
+      const parsed = JSON.parse(storedUser);
+      
+      // যদি লোকাল স্টোরেজেই ফুল নেম ও রোল থাকে, সরাসরি সেট করে দিতে পারি
+      if (parsed.fullName) {
         setManagerData({
-          fullName: result.data.fullName || result.data.name || 'Priya Nair',
-          email: result.data.email || '',
-          role: result.data.role || 'Branch Manager'
+          fullName: parsed.fullName,
+          email: parsed.email || '',
+          role: parsed.role || 'MANAGER'
         });
+      }
+
+      // ব্যাকএন্ড থেকে আরও আপডেট ভ্যালু আনতে চাইলে:
+      if (parsed.email) {
+        const res = await fetch(`/api/auth/me?email=${encodeURIComponent(parsed.email)}`);
+        const result = await res.json();
+
+        if (result.success && result.data) {
+          setManagerData({
+            fullName: result.data.fullName || parsed.fullName || 'MD ANTOR MIA',
+            email: result.data.email || parsed.email || '',
+            role: result.data.role || parsed.role || 'MANAGER'
+          });
+        }
       }
     } catch (e) {
       console.error('Failed to fetch manager data', e);
     }
   };
 
-  // নোটিফিকেশন ফেচ করার ফাংশন
+  // নোটিফিকেশন ফেচ করা
   const fetchNotifications = async () => {
     try {
       setLoading(true);
@@ -82,17 +101,24 @@ export default function ManagerLayout({ children }) {
     loadManagerData();
     fetchNotifications();
 
+    const handleUserUpdate = () => {
+      loadManagerData();
+    };
+
     const handleNotificationRefresh = () => {
       fetchNotifications();
     };
 
+    window.addEventListener('userUpdated', handleUserUpdate);
     window.addEventListener('notificationCreated', handleNotificationRefresh);
+
     return () => {
+      window.removeEventListener('userUpdated', handleUserUpdate);
       window.removeEventListener('notificationCreated', handleNotificationRefresh);
     };
   }, []);
 
-  // নোটিফিকেশন ড্রয়ার ওপেন করলে সেগুলোকে রিড হিসেবে মার্ক করা
+  // যখন নোটিফিকেশন প্যানেল ওপেন হবে
   const handleOpenNotification = () => {
     setIsNotificationOpen(true);
     fetchNotifications();
@@ -110,12 +136,12 @@ export default function ManagerLayout({ children }) {
     }
   };
 
-  // আনরিড নোটিফিকেশন গণনা করা
+  // আনরিড নোটিফিকেশন কাউন্ট হিসাব করা
   const unreadCount = notifications.filter((item) => !readNotificationIds.includes(item.id) && !item.isRead).length;
 
-  // নামের প্রথম অক্ষর দিয়ে অবতারের শর্টকাট তৈরি
+  // নামের প্রথম অক্ষর দিয়ে অবতারের শর্টকাট তৈরি (যেমন: MD ANTOR MIA -> MA)
   const getInitials = (name) => {
-    if (!name) return 'PN';
+    if (!name) return 'AM';
     const parts = name.trim().split(' ');
     if (parts.length >= 2) {
       return (parts[0][0] + parts[1][0]).toUpperCase();
@@ -123,46 +149,44 @@ export default function ManagerLayout({ children }) {
     return name.substring(0, 2).toUpperCase();
   };
 
-  // Route অনুযায়ী Dynamic Title নির্ধারণ
-  const getPageTitle = (path) => {
-    switch (path) {
-      case '/manager':
-        return 'Dashboard';
-      case '/manager/employees':
-        return 'Employees';
-      case '/manager/verification-queue':
-        return 'Verification Queue';
-      case '/manager/attendance':
-        return 'Attendance';
-      case '/manager/reports':
-        return 'Reports';
-      case '/manager/notifications':
-        return 'Notifications';
-      case '/manager/settings':
-        return 'Settings';
-      default:
-        return 'Manager Portal';
-    }
-  };
-
   return (
-    <div className="min-h-screen bg-slate-50/60 font-sans flex">
-      {/* Sidebar Component */}
-      <Sidebar isCollapsed={isCollapsed} setIsCollapsed={setIsCollapsed} />
+    <>
+      <header className="h-16 bg-white border-b border-slate-100 px-6 flex items-center justify-between shrink-0 relative">
+        <h1 className="text-xl font-bold text-slate-800 tracking-tight">
+          {title}
+        </h1>
 
-      {/* Main Content Area */}
-      <div 
-        className={`flex-1 flex flex-col transition-all duration-300 min-w-0 ${
-          isCollapsed ? 'ml-20' : 'ml-64'
-        }`}
-      >
-        <Header />
+        <div className="flex items-center gap-3">
+          {/* Theme Toggle Button */}
+          <button className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-xl transition-all cursor-pointer border border-slate-100">
+            <Sun className="w-4 h-4" />
+          </button>
 
-        {/* Dynamic Page Content */}
-        <main className="p-6 sm:p-8 flex-1">
-          {children}
-        </main>
-      </div>
+          {/* Notification Bell Button */}
+          <button 
+            onClick={handleOpenNotification}
+            className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-xl transition-all cursor-pointer border border-slate-100 relative"
+          >
+            <Bell className="w-4 h-4" />
+            {unreadCount > 0 && (
+              <span className="absolute top-2 right-2 min-w-4 h-4 px-1 bg-rose-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center ring-2 ring-white">
+                {unreadCount}
+              </span>
+            )}
+          </button>
+
+          {/* Manager Profile Info */}
+          <div className="flex items-center gap-2.5 pl-2 border-l border-slate-100">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white font-bold text-xs flex items-center justify-center shadow-xs">
+              {getInitials(managerData.fullName)}
+            </div>
+            <div className="hidden sm:block text-left leading-tight">
+              <p className="text-xs font-bold text-slate-800 uppercase">{managerData.fullName}</p>
+              <p className="text-[10px] text-slate-400 font-medium">{managerData.role}</p>
+            </div>
+          </div>
+        </div>
+      </header>
 
       {/* Notification Modal / Drawer */}
       {isNotificationOpen && (
@@ -229,6 +253,8 @@ export default function ManagerLayout({ children }) {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
-}
+};
+
+export default Header;

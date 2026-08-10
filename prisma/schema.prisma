@@ -74,6 +74,7 @@ model Admin {
   email       String   @unique
   fullName    String
   companyName String
+  password    String   // Admin-er password field
   role        String   @default("ADMIN")
   
   createdAt   DateTime @default(now())

@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard,
   Building2,
@@ -15,7 +15,6 @@ import {
   ChevronLeft,
   LogOut,
 } from 'lucide-react';
-import LogoutButton from '@/app/Components/LogoutButton';
 
 const navItems = [
   { name: 'Dashboard', icon: LayoutDashboard, href: '/admin' },
@@ -31,6 +30,15 @@ const navItems = [
 
 const Sidebar = ({ isCollapsed, setIsCollapsed }) => {
   const pathname = usePathname();
+  const router = useRouter();
+
+  const handleLogout = () => {
+    // লোকাল স্টোরেজ থেকে এডমিন ডাটা রিমুভ করা
+    localStorage.removeItem('admin');
+    
+    // লগইন পেজে রিডায়রেক্ট করা (আপনার প্রজেক্টের পাথ অনুযায়ী /admin/login অথবা /login দিন)
+    router.push('/admin/login');
+  };
 
   return (
     <aside
@@ -58,7 +66,6 @@ const Sidebar = ({ isCollapsed, setIsCollapsed }) => {
           {navItems.map((item) => {
             const Icon = item.icon;
 
-            // FIX: /admin এর জন্য Exact Check এবং অন্যান্য পেজের জন্য Sub-route Check
             const isActive =
               item.href === '/admin'
                 ? pathname === '/admin'
@@ -101,10 +108,15 @@ const Sidebar = ({ isCollapsed, setIsCollapsed }) => {
           {!isCollapsed && <span>Collapse</span>}
         </button>
 
-        <LogoutButton 
-  showText={!isCollapsed}
-  className="w-full justify-start text-rose-500 hover:bg-rose-50 bg-transparent border-none shadow-none font-semibold text-xs sm:text-sm"
-/>
+        {/* Logout Button */}
+        <button
+          onClick={handleLogout}
+          className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold text-rose-500 hover:bg-rose-50 transition-all cursor-pointer"
+          title={isCollapsed ? 'Logout' : ''}
+        >
+          <LogOut className="w-4 h-4 shrink-0 text-rose-500" />
+          {!isCollapsed && <span>Logout</span>}
+        </button>
       </div>
     </aside>
   );

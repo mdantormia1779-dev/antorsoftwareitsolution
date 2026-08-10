@@ -16,45 +16,60 @@ const EmployeesPage = () => {
   const filterRef = useRef(null);
   const sortRef = useRef(null);
 
-  // ডামি ডাটা
-  const employeesData = [
-    {
-      id: 'EMP-2098',
-      name: 'Isla Fontaine',
-      initials: 'IF',
-      avatarBg: 'bg-emerald-600',
-      branch: 'Westline Hub',
-      status: 'Inactive',
-      faceStatus: 'Verified',
-      checkIn: '—',
-      checkInSubText: null,
-      hours: '0h 00m'
-    },
-    {
-      id: 'EMP-2054',
-      name: 'Owen Marsh',
-      initials: 'OM',
-      avatarBg: 'bg-rose-600',
-      branch: 'Eastline Hub',
-      status: 'Active',
-      faceStatus: 'Failed',
-      checkIn: '—',
-      checkInSubText: 'Late',
-      hours: '0h 00m'
-    },
-    {
-      id: 'EMP-2011',
-      name: 'Priya Nair',
-      initials: 'PN',
-      avatarBg: 'bg-emerald-600',
-      branch: 'Central Hub',
-      status: 'Active',
-      faceStatus: 'Verified',
-      checkIn: '08:15',
-      checkInSubText: null,
-      hours: '9h 17m'
-    }
-  ];
+  // API ডেটা এবং লোডিং স্টেট
+  const [employeesData, setEmployeesData] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  // ব্যাকএন্ড থেকে রিয়েল ডাটা ফেচ করা
+  useEffect(() => {
+    const fetchEmployees = async () => {
+      try {
+        setLoading(true);
+        const res = await fetch('/api/employees');
+        const result = await res.json();
+        
+        // ব্যাকএন্ড থেকে আসা ডাটা থেকে অ্যারে বের করে নেওয়া (যদি result সরাসরি অ্যারে হয় বা result.data তে থাকে)
+        const rawList = Array.isArray(result) ? result : (result.data || []);
+
+        if (Array.isArray(rawList)) {
+          const formatted = rawList.map((emp, index) => {
+            const fullName = emp.fullName || 'Unnamed';
+            const nameParts = fullName.trim().split(' ');
+            let initials = 'EM';
+            if (nameParts.length >= 2) {
+              initials = `${nameParts[0][0]}${nameParts[1][0]}`.toUpperCase();
+            } else if (nameParts.length === 1 && nameParts[0].length > 0) {
+              initials = nameParts[0].substring(0, 2).toUpperCase();
+            }
+
+            const bgColors = ['bg-blue-600', 'bg-emerald-600', 'bg-rose-600', 'bg-violet-600', 'bg-amber-600'];
+            
+            return {
+              realId: emp.id,
+              id: emp.empCode || 'EMP-0000',
+              name: fullName,
+              initials: initials,
+              avatarBg: bgColors[index % bgColors.length],
+              branch: emp.branchRef?.name || 'Main Branch',
+              status: emp.status === 'ACTIVE' ? 'Active' : 'Inactive',
+              faceStatus: emp.faceStatus === 'VERIFIED' ? 'Verified' : 'Pending',
+              checkIn: '—',
+              checkInSubText: null,
+              hours: '0h 00m',
+            };
+          });
+
+          setEmployeesData(formatted);
+        }
+      } catch (error) {
+        console.error('Error fetching employees:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchEmployees();
+  }, []);
 
   // ড্রপডাউনের বাইরে ক্লিক করলে বন্ধ করার ফিল্টার
   useEffect(() => {
@@ -244,9 +259,15 @@ const EmployeesPage = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100/80 text-xs sm:text-sm">
-              {sortedEmployees.length > 0 ? (
+              {loading ? (
+                <tr>
+                  <td colSpan={7} className="py-10 text-center text-slate-400 font-medium text-xs">
+                    Loading employees...
+                  </td>
+                </tr>
+              ) : sortedEmployees.length > 0 ? (
                 sortedEmployees.map((emp) => (
-                  <tr key={emp.id} className="hover:bg-slate-50/50 transition-colors group">
+                  <tr key={emp.realId} className="hover:bg-slate-50/50 transition-colors group">
                     
                     {/* Employee Name & ID */}
                     <td className="py-4 px-2">
