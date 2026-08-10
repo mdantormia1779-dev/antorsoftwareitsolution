@@ -97,19 +97,6 @@ const AttendancePage = () => {
             Attendance
           </h1>
         </div>
-
-        {/* Action Buttons */}
-        <div className="flex items-center gap-2.5">
-          <button className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-slate-200/80 rounded-xl text-xs sm:text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-all cursor-pointer shadow-2xs">
-            <Download className="w-4 h-4 text-slate-500" />
-            <span>Export PDF</span>
-          </button>
-          
-          <button className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-slate-200/80 rounded-xl text-xs sm:text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-all cursor-pointer shadow-2xs">
-            <FileSpreadsheet className="w-4 h-4 text-slate-500" />
-            <span>Export Excel</span>
-          </button>
-        </div>
       </div>
 
       {/* Top Stat Cards (Safeguarded with optional chaining and fallback) */}

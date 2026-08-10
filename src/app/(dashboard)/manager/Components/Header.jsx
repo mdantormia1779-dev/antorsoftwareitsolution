@@ -7,86 +7,41 @@ const Header = ({ title }) => {
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(false);
-  
-  // পড়া হয়ে যাওয়া নোটিফিকেশনগুলোর আইডি স্টোর করার স্টেট
   const [readNotificationIds, setReadNotificationIds] = useState([]);
 
-  // লোকাল স্টোরেজ থেকে ম্যানেজার/ইউজার ডাটা লোড করে ইনিশিয়াল স্টেট সেট করা
-  const [managerData, setManagerData] = useState(() => {
+  // Hydration mismatch এড়াতে ইনিশিয়াল স্টেট ডিফল্ট রাখা হলো
+  const [managerData, setManagerData] = useState({
+    fullName: 'MANAGER',
+    email: '',
+    role: 'MANAGER'
+  });
+
+  useEffect(() => {
     try {
       const stored = localStorage.getItem('user');
       if (stored) {
         const parsed = JSON.parse(stored);
-        return {
-          fullName: parsed.fullName || 'MD ANTOR MIA',
+        setManagerData({
+          fullName: parsed.fullName || 'MANAGER',
           email: parsed.email || '',
           role: parsed.role || 'MANAGER'
-        };
+        });
       }
-    } catch (e) {
-      console.error('Failed to parse user from localStorage', e);
-    }
-    return {
-      fullName: 'MD ANTOR MIA',
-      email: '',
-      role: 'MANAGER'
-    };
-  });
-
-  // লোকাল স্টোরেজ থেকে অলরেডি পড়া নোটিফিকেশন আইডিগুলো লোড করা
-  useEffect(() => {
-    try {
+      
       const savedRead = localStorage.getItem('read_notifications');
       if (savedRead) {
         setReadNotificationIds(JSON.parse(savedRead));
       }
     } catch (e) {
-      console.error('Failed to load read notifications', e);
+      console.error('Failed to load storage data', e);
     }
   }, []);
 
-  // লোকাল স্টোরেজ ও ডাটাবেজ থেকে লেটেস্ট ইউজার ডাটা রিফ্রেশ করা
-  const loadManagerData = async () => {
-    try {
-      const storedUser = localStorage.getItem('user');
-      if (!storedUser) return;
-
-      const parsed = JSON.parse(storedUser);
-      
-      // যদি লোকাল স্টোরেজেই ফুল নেম ও রোল থাকে, সরাসরি সেট করে দিতে পারি
-      if (parsed.fullName) {
-        setManagerData({
-          fullName: parsed.fullName,
-          email: parsed.email || '',
-          role: parsed.role || 'MANAGER'
-        });
-      }
-
-      // ব্যাকএন্ড থেকে আরও আপডেট ভ্যালু আনতে চাইলে:
-      if (parsed.email) {
-        const res = await fetch(`/api/auth/me?email=${encodeURIComponent(parsed.email)}`);
-        const result = await res.json();
-
-        if (result.success && result.data) {
-          setManagerData({
-            fullName: result.data.fullName || parsed.fullName || 'MD ANTOR MIA',
-            email: result.data.email || parsed.email || '',
-            role: result.data.role || parsed.role || 'MANAGER'
-          });
-        }
-      }
-    } catch (e) {
-      console.error('Failed to fetch manager data', e);
-    }
-  };
-
-  // নোটিফিকেশন ফেচ করা
   const fetchNotifications = async () => {
     try {
       setLoading(true);
       const res = await fetch('/api/notifications');
       const result = await res.json();
-      
       if (result.success && Array.isArray(result.data)) {
         setNotifications(result.data);
       }
@@ -98,50 +53,27 @@ const Header = ({ title }) => {
   };
 
   useEffect(() => {
-    loadManagerData();
     fetchNotifications();
-
-    const handleUserUpdate = () => {
-      loadManagerData();
-    };
-
-    const handleNotificationRefresh = () => {
-      fetchNotifications();
-    };
-
-    window.addEventListener('userUpdated', handleUserUpdate);
+    const handleNotificationRefresh = () => fetchNotifications();
     window.addEventListener('notificationCreated', handleNotificationRefresh);
-
-    return () => {
-      window.removeEventListener('userUpdated', handleUserUpdate);
-      window.removeEventListener('notificationCreated', handleNotificationRefresh);
-    };
+    return () => window.removeEventListener('notificationCreated', handleNotificationRefresh);
   }, []);
 
-  // যখন নোটিফিকেশন প্যানেল ওপেন হবে
   const handleOpenNotification = () => {
     setIsNotificationOpen(true);
     fetchNotifications();
-
     if (notifications.length > 0) {
       const allIds = notifications.map((item) => item.id);
       const updatedReadIds = Array.from(new Set([...readNotificationIds, ...allIds]));
-      
       setReadNotificationIds(updatedReadIds);
-      try {
-        localStorage.setItem('read_notifications', JSON.stringify(updatedReadIds));
-      } catch (e) {
-        console.error('Failed to save read notifications', e);
-      }
+      localStorage.setItem('read_notifications', JSON.stringify(updatedReadIds));
     }
   };
 
-  // আনরিড নোটিফিকেশন কাউন্ট হিসাব করা
   const unreadCount = notifications.filter((item) => !readNotificationIds.includes(item.id) && !item.isRead).length;
 
-  // নামের প্রথম অক্ষর দিয়ে অবতারের শর্টকাট তৈরি (যেমন: MD ANTOR MIA -> MA)
   const getInitials = (name) => {
-    if (!name) return 'AM';
+    if (!name || name === 'MANAGER') return 'MA';
     const parts = name.trim().split(' ');
     if (parts.length >= 2) {
       return (parts[0][0] + parts[1][0]).toUpperCase();
@@ -152,17 +84,13 @@ const Header = ({ title }) => {
   return (
     <>
       <header className="h-16 bg-white border-b border-slate-100 px-6 flex items-center justify-between shrink-0 relative">
-        <h1 className="text-xl font-bold text-slate-800 tracking-tight">
-          {title}
-        </h1>
+        <h1 className="text-xl font-bold text-slate-800 tracking-tight">{title}</h1>
 
         <div className="flex items-center gap-3">
-          {/* Theme Toggle Button */}
           <button className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-xl transition-all cursor-pointer border border-slate-100">
             <Sun className="w-4 h-4" />
           </button>
 
-          {/* Notification Bell Button */}
           <button 
             onClick={handleOpenNotification}
             className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-xl transition-all cursor-pointer border border-slate-100 relative"
@@ -175,7 +103,6 @@ const Header = ({ title }) => {
             )}
           </button>
 
-          {/* Manager Profile Info */}
           <div className="flex items-center gap-2.5 pl-2 border-l border-slate-100">
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white font-bold text-xs flex items-center justify-center shadow-xs">
               {getInitials(managerData.fullName)}
@@ -188,68 +115,29 @@ const Header = ({ title }) => {
         </div>
       </header>
 
-      {/* Notification Modal / Drawer */}
       {isNotificationOpen && (
-        <div className="fixed inset-0 z-50 flex items-start justify-end bg-black/25 backdrop-blur-2xs p-4 sm:p-6 animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-start justify-end bg-black/25 backdrop-blur-2xs p-4 sm:p-6">
           <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl border border-slate-100 overflow-hidden flex flex-col max-h-[85vh] mt-12 mr-2">
-            
-            {/* Modal Header */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-slate-50/50">
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-bold text-slate-800">Notifications</h3>
-                <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-600 text-[10px] font-bold">
-                  {notifications.length} Total
-                </span>
-              </div>
-              <button
-                onClick={() => setIsNotificationOpen(false)}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-200/50 transition-colors cursor-pointer"
-              >
+              <h3 className="text-sm font-bold text-slate-800">Notifications</h3>
+              <button onClick={() => setIsNotificationOpen(false)} className="text-slate-400 hover:text-slate-600 p-1 rounded-lg">
                 <X className="w-4 h-4" />
               </button>
             </div>
-
-            {/* Notification List Body */}
             <div className="overflow-y-auto p-4 space-y-3 flex-1">
               {loading ? (
-                <div className="text-center py-8 text-xs text-slate-400 font-medium">Loading notifications...</div>
+                <div className="text-center py-8 text-xs text-slate-400">Loading...</div>
               ) : notifications.length === 0 ? (
-                <div className="text-center py-10 text-slate-400 text-xs font-medium">
-                  No new notifications found.
-                </div>
+                <div className="text-center py-10 text-slate-400 text-xs">No new notifications.</div>
               ) : (
                 notifications.map((item) => (
-                  <div 
-                    key={item.id}
-                    className="p-3.5 rounded-2xl bg-slate-50/70 border border-slate-100 space-y-1 hover:bg-slate-100/60 transition-all"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-800">{item.title}</span>
-                      <span className="text-[10px] font-semibold text-blue-600 px-2 py-0.5 bg-blue-50 rounded-md">
-                        {item.priority || 'MEDIUM'}
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-600 leading-relaxed">
-                      {item.body}
-                    </p>
-                    <p className="text-[10px] text-slate-400 pt-1">
-                      {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </p>
+                  <div key={item.id} className="p-3.5 rounded-2xl bg-slate-50/70 border border-slate-100 space-y-1">
+                    <span className="text-xs font-bold text-slate-800">{item.title}</span>
+                    <p className="text-xs text-slate-600">{item.body}</p>
                   </div>
                 ))
               )}
             </div>
-
-            {/* Modal Footer */}
-            <div className="p-3 border-t border-slate-100 bg-slate-50/50 text-center">
-              <button
-                onClick={() => setIsNotificationOpen(false)}
-                className="text-xs font-bold text-blue-600 hover:text-blue-700 transition-colors cursor-pointer"
-              >
-                Close Panel
-              </button>
-            </div>
-
           </div>
         </div>
       )}
