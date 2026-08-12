@@ -19,7 +19,12 @@ const DashboardStats = () => {
   const fetchStats = async () => {
     try {
       setLoading(true);
-      const res = await fetch('/api/dashboard/stats'); // আপনার নির্দিষ্ট API রুট দিন
+      
+      // উদাহরণস্বরূপ ব্রাউজারের localStorage বা কুকি থেকে লগইন করা ইউজারের আইডি নেওয়া হচ্ছে
+      const loggedInUser = JSON.parse(localStorage.getItem('user') || '{}');
+      const userId = loggedInUser.id || ''; // আপনার প্রজেক্টের স্ট্রাকচার অনুযায়ী এটি দেবেন
+
+      const res = await fetch(`/api/dashboard/stats?userId=${userId}`);
       const result = await res.json();
       
       if (result.success) {

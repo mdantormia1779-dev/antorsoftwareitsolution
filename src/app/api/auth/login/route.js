@@ -1,39 +1,62 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
+// POST: এমপ্লয়ি লগইন (Email এবং Pin দিয়ে)
 export async function POST(req) {
   try {
-    const { empCode, pin } = await req.json();
+    const body = await req.json();
+    const { email, pin } = body;
 
-    if (!empCode || !pin) {
-      return NextResponse.json({ success: false, message: 'Employee Code and PIN are required.' }, { status: 400 });
+    // ১. ফিল্ডগুলো ঠিকমতো দেওয়া হয়েছে কি না চেক করা
+    if (!email || !pin) {
+      return NextResponse.json(
+        { success: false, message: 'Email and pin are required for login.' },
+        { status: 400 }
+      );
     }
 
-    // ডাটাবেজ থেকে ইউজার খোঁজা
-    const user = await prisma.user.findUnique({
-      where: { empCode },
-      include: { organization: true, branchRef: true }
+    // ২. ডাটাবেস থেকে ইমেইল দিয়ে ইউজার খোঁজা
+    const employee = await prisma.user.findUnique({
+      where: { email: email },
+      include: {
+        branchRef: true,
+        organization: true,
+      },
     });
 
-    if (!user) {
-      return NextResponse.json({ success: false, message: 'User not found!' }, { status: 404 });
+    // ৩. ইউজার না পাওয়া গেলে এরর রিটার্ন করা
+    if (!employee) {
+      return NextResponse.json(
+        { success: false, message: 'Invalid email or pin.' },
+        { status: 401 }
+      );
     }
 
-    // পিন (PIN) ম্যাচ করা
-    if (user.pin !== pin) {
-      return NextResponse.json({ success: false, message: 'Invalid PIN!' }, { status: 401 });
+    // ৪. পিন (Pin) সঠিক আছে কি না যাচাই করা
+    // (যদি আপনি হ্যাশ পাসওয়ার্ড ব্যবহার করেন, তবে এখানে bcrypt.compare করতে হবে। সাধারণ পিনের জন্য সরাসরি তুলনা করা হলো)
+    if (employee.pin !== pin) {
+      return NextResponse.json(
+        { success: false, message: 'Invalid email or pin.' },
+        { status: 401 }
+      );
     }
 
-    // সফল লগইন হলে ইউজারের তথ্য রিটার্ন করা (পাসওয়ার্ড/পিন বাদে)
-    const { pin: _, ...userData } = user;
+    // ৫. সফলভাবে লগইন হলে ইউজারের তথ্য রিটার্ন করা (পাসওয়ার্ড বা পিন বাদে পাঠানো ভালো)
+    const { pin: _, ...employeeWithoutPin } = employee;
 
-    return NextResponse.json({ 
-      success: true, 
-      message: 'Login successful', 
-      data: userData 
-    }, { status: 200 });
+    return NextResponse.json(
+      { 
+        success: true, 
+        message: 'Login successful.', 
+        data: employeeWithoutPin 
+      },
+      { status: 200 }
+    );
 
   } catch (error) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: error.message },
+      { status: 500 }
+    );
   }
 }

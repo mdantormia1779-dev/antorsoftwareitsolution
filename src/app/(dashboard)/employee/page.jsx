@@ -1,139 +1,164 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
-import { Clock, TrendingUp } from 'lucide-react';
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import Sidebar from './Components/Sidebar';
-import CheckInCard from './Components/CheckInCard';
-import StatCard from './Components/StatCard';
-import WeeklyChart from './Components/WeeklyChart';
-import RecentActivity from './Components/RecentActivity';
-import BottomNav from './Components/BottomNav';
+import React, { useEffect, useState } from "react";
+import { Loader2, Clock, Calendar, ShieldCheck } from "lucide-react";
+import CheckInCard from "./Components/CheckInCard";
 
-const EmployeePage = () => {
-  const [workingTime, setWorkingTime] = useState("0h 00m");
-  const [overtime, setOvertime] = useState("0h 00m");
-  const [mounted, setMounted] = useState(false);
+export default function EmployeeDashboard() {
+  const [loading, setLoading] = useState(true);
+  const [dashboardData, setDashboardData] = useState(null);
+  const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
-    setMounted(true);
-
-    const updateStats = () => {
-      const isCheckedIn = localStorage.getItem("isCheckedIn") === "true";
-      const savedTime = localStorage.getItem("checkInTime");
-
-      if (isCheckedIn && savedTime) {
-        const checkInMs = new Date(savedTime).getTime();
-        const nowMs = new Date().getTime();
-        const diffMs = Math.max(0, nowMs - checkInMs);
-
-        // মোট কাজের মিনিট হিসাব
-        const totalMinutes = Math.floor(diffMs / (1000 * 60));
-        const hours = Math.floor(totalMinutes / 60);
-        const minutes = totalMinutes % 60;
-
-        // Working Hours Today ডায়নামিক আপডেট
-        setWorkingTime(`${hours}h ${String(minutes).padStart(2, '0')}m`);
-
-        // ৮ ঘণ্টার (৪৮০ মিনিট) বেশি কাজ করলে তা ওভারটাইম হিসেবে যোগ হবে
-        const standardWorkMinutes = 8 * 60; // ৮ ঘণ্টা
-        if (totalMinutes > standardWorkMinutes) {
-          const otMins = totalMinutes - standardWorkMinutes;
-          const otHours = Math.floor(otMins / 60);
-          const otRemainingMins = otMins % 60;
-          setOvertime(`${otHours}h ${String(otRemainingMins).padStart(2, '0')}m`);
-        } else {
-          setOvertime("0h 00m");
+    async function fetchDashboardData() {
+      try {
+        const userStr = localStorage.getItem("user");
+        if (!userStr) {
+          setLoading(false);
+          return;
         }
-      } else {
-        setWorkingTime("0h 00m");
-        setOvertime("0h 00m");
+
+        const user = JSON.parse(userStr);
+        const userId = user.id || user._id;
+        if (!userId) {
+          setLoading(false);
+          return;
+        }
+
+        const response = await fetch(`/api/employee/dashboard?userId=${userId}`);
+        const data = await response.json();
+
+        if (response.ok && data.success) {
+          setDashboardData(data.data);
+        } else {
+          throw new Error(data.message || "Failed to load dashboard data");
+        }
+      } catch (error) {
+        console.error("Error fetching dashboard data:", error);
+        setErrorMessage(error.message);
+      } finally {
+        setLoading(false);
       }
-    };
+    }
 
-    updateStats();
-    // প্রতি ১০ সেকেন্ড পর পর হিসাব আপডেট করবে
-    const interval = setInterval(updateStats, 10000);
-
-    return () => clearInterval(interval);
+    fetchDashboardData();
   }, []);
 
-  const weeklyData = [
-    { day: 'Mon', percent: '65%' },
-    { day: 'Tue', percent: '80%' },
-    { day: 'Wed', percent: '65%' },
-    { day: 'Thu', percent: '95%' },
-    { day: 'Fri', percent: '50%' },
-    { day: 'Sat', percent: '30%' },
-    { day: 'Sun', percent: '15%' },
-  ];
-
-  const recentActivities = [
-    { title: 'Checked Out', time: 'Yesterday, 06:15 PM', status: 'Completed' },
-    { title: 'Checked In', time: 'Yesterday, 09:02 AM', status: 'On Time' },
-    { title: 'Checked Out', time: '12 Aug, 05:45 PM', status: 'Completed' },
-  ];
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <Loader2 className="w-8 h-8 animate-spin text-slate-600" />
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-slate-50/60 flex flex-col lg:flex-row font-sans">
-
-      {/* Main Content Area */}
-      <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full pb-24 lg:pb-8">
-        
-        {/* Header */}
-        <header className="flex justify-between items-center mb-6 lg:mb-8">
-          <div>
-            <p className="text-xs sm:text-sm text-slate-400 font-medium">Good morning,</p>
-            <h1 className="text-2xl sm:text-3xl font-bold text-slate-800">Ava</h1>
-          </div>
-          <div className="lg:hidden">
-            <Avatar className="h-10 w-10 bg-blue-600 text-white font-semibold">
-              <AvatarFallback className="bg-blue-600 text-white">AW</AvatarFallback>
-            </Avatar>
-          </div>
-        </header>
-
-        {/* Layout Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          
-          {/* Main Left Section */}
-          <div className="lg:col-span-2 space-y-6">
-            <CheckInCard />
-
-            {/* Dynamic StatCards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <StatCard 
-                title="Working Hours Today" 
-                value={mounted ? workingTime : "0h 00m"} 
-                icon={Clock} 
-                iconBgColor="bg-blue-50" 
-                iconColor="text-blue-600" 
-              />
-              <StatCard 
-                title="Overtime (This Week)" 
-                value={mounted ? overtime : "0h 00m"} 
-                icon={TrendingUp} 
-                iconBgColor="bg-purple-50" 
-                iconColor="text-purple-600" 
-              />
-            </div>
-
-            <WeeklyChart data={weeklyData} />
-          </div>
-
-          {/* Right Section */}
-          <div className="space-y-6">
-            <RecentActivity activities={recentActivities} />
-          </div>
-
+    <div className="space-y-6 max-w-6xl mx-auto p-4 sm:p-6">
+      {/* Welcome Banner */}
+      <div className="bg-white border border-slate-100 shadow-sm rounded-2xl p-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800 tracking-tight">
+            Welcome back, {dashboardData?.name || "Employee"}! 👋
+          </h1>
+          <p className="text-sm text-slate-400 font-medium mt-0.5">
+            Here is your attendance overview and daily activity summary.
+          </p>
         </div>
-      </main>
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5">
+          <ShieldCheck className="w-4 h-4 text-emerald-600" />
+          <span>Active Duty Verified</span>
+        </div>
+      </div>
 
-      {/* Bottom Nav for Mobile */}
-      <BottomNav />
+      {/* Check-In / Check-Out Card */}
+      <CheckInCard />
 
+      {/* Statistics & Weekly Overtime Summary */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="bg-white border border-slate-100 shadow-sm rounded-2xl p-5 flex items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600">
+            <Clock className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">
+              Weekly Overtime
+            </p>
+            <h3 className="text-xl font-bold text-slate-800 mt-0.5">
+              {dashboardData?.overtimeWeekly || "0h 00m"}
+            </h3>
+          </div>
+        </div>
+
+        <div className="bg-white border border-slate-100 shadow-sm rounded-2xl p-5 flex items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-purple-50 flex items-center justify-center text-purple-600">
+            <Calendar className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">
+              Today's Status
+            </p>
+            <h3 className="text-xl font-bold text-slate-800 mt-0.5">
+              {dashboardData?.checkOutTime
+                ? "Checked Out"
+                : dashboardData?.checkInTime
+                ? "Working"
+                : "Not Checked In"}
+            </h3>
+          </div>
+        </div>
+      </div>
+
+      {/* Recent Activities Section */}
+      <div className="bg-white border border-slate-100 shadow-sm rounded-2xl p-6">
+        <h3 className="text-lg font-bold text-slate-800 mb-4 tracking-tight">
+          Recent Activities
+        </h3>
+
+        {dashboardData?.recentActivities && dashboardData.recentActivities.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-slate-100 text-xs text-slate-400 uppercase tracking-wider">
+                  <th className="py-3 px-4 font-semibold">Date</th>
+                  <th className="py-3 px-4 font-semibold">Check-In</th>
+                  <th className="py-3 px-4 font-semibold">Check-Out</th>
+                  <th className="py-3 px-4 font-semibold">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50 text-sm">
+                {dashboardData.recentActivities.map((log) => (
+                  <tr key={log.id} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="py-3.5 px-4 font-medium text-slate-700">{log.date}</td>
+                    <td className="py-3.5 px-4 text-slate-600">{log.checkIn}</td>
+                    <td className="py-3.5 px-4 text-slate-600">
+                      {log.checkOut === "Active" ? (
+                        <span className="bg-emerald-50 text-emerald-600 text-xs px-2.5 py-1 rounded-lg font-medium">
+                          Active
+                        </span>
+                      ) : (
+                        log.checkOut
+                      )}
+                    </td>
+                    <td className="py-3.5 px-4">
+                      <span className={`text-xs px-2.5 py-1 rounded-lg font-semibold ${
+                        log.status === "PRESENT" 
+                          ? "bg-emerald-50 text-emerald-600" 
+                          : "bg-amber-50 text-amber-600"
+                      }`}>
+                        {log.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="text-sm text-slate-400 text-center py-6">
+            No recent attendance history found.
+          </p>
+        )}
+      </div>
     </div>
   );
-};
-
-export default EmployeePage;
+}

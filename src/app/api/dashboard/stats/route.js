@@ -1,35 +1,60 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
-export async function GET(req) {
+export async function GET(request) {
   try {
-    const { searchParams } = new URL(req.url);
-    const organizationId = searchParams.get('organizationId');
+    const { searchParams } = new URL(request.url);
+    const userId = searchParams.get('userId'); 
 
-    const orgFilter = organizationId ? { organizationId } : {};
+    if (!userId) {
+      return NextResponse.json({ success: false, message: 'Unauthorized: User ID missing' }, { status: 401 });
+    }
 
-    // ১. মোট ব্রাঞ্চ কাউন্ট
-    const totalBranches = await prisma.branch.count({
-      where: orgFilter,
+    // ১. ইউজার এবং তার ব্রাঞ্চের তথ্য ফেচ করা
+    const currentUser = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { 
+        managedBranch: true,
+        branchRef: true,
+      },
     });
 
-    // ২. মোট এমপ্লয়ি কাউন্ট
+    if (!currentUser) {
+      return NextResponse.json({ success: false, message: 'User not found' }, { status: 404 });
+    }
+
+    let targetBranchId = null;
+
+    // ২. ম্যানেজার বা এমপ্লয়ীর ব্রাঞ্চ আইডি নির্ধারণ (branchId অথবা managedBranch থেকে)
+    if (currentUser.branchId) {
+      targetBranchId = currentUser.branchId;
+    } else if (currentUser.managedBranch) {
+      targetBranchId = currentUser.managedBranch.id;
+    } else if (currentUser.role === 'ADMIN') {
+      targetBranchId = null; // এডমিন হলে সব ব্রাঞ্চ দেখতে পারবে
+    }
+
+    // ৩. ঐ ব্রাঞ্চের মোট এমপ্লয়ী সংখ্যা গণনা
+    const employeeWhereClause = targetBranchId ? { branchId: targetBranchId } : {};
     const totalEmployees = await prisma.user.count({
-      where: orgFilter,
+      where: {
+        ...employeeWhereClause,
+        role: 'EMPLOYEE', 
+      },
     });
 
-    // আজকের তারিখ বের করা (টাইম জোন হ্যান্ডেল করার জন্য)
+    // আজকের তারিখের শুরু ও শেষ সময় নির্ধারণ
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
-
+    
     const todayEnd = new Date();
     todayEnd.setHours(23, 59, 59, 999);
 
-    // ৩. আজকের প্রেজেন্ট, এবসেন্ট এবং লেট অ্যাটেন্ডেন্স কাউন্ট
-    // (আপনার প্রজেক্টের Attendance মডেল অনুযায়ী কোডটি এখানে সেট করা হয়েছে)
+    // ৪. আজকের দিনে ঐ ব্রাঞ্চের এটেন্ডেন্স ডেটা ফেচ করা
+    const attendanceWhere = targetBranchId ? { branchId: targetBranchId } : {};
     const todayAttendances = await prisma.attendance.findMany({
       where: {
-        ...orgFilter,
+        ...attendanceWhere,
         date: {
           gte: todayStart,
           lte: todayEnd,
@@ -37,24 +62,42 @@ export async function GET(req) {
       },
     });
 
-    const presentToday = todayAttendances.filter(a => a.status === 'PRESENT' || a.status === 'ON_TIME').length;
-    const lateEmployees = todayAttendances.filter(a => a.status === 'LATE').length;
-    const absentToday = totalEmployees - (presentToday + lateEmployees);
+    let presentCount = 0;
+    let lateCount = 0;
+    let totalWorkedMinutes = 0;
+    let totalOvertimeMinutes = 0;
+
+    todayAttendances.forEach((att) => {
+      if (att.status === 'PRESENT') presentCount++;
+      if (att.status === 'LATE' || att.isLate) lateCount++;
+      
+      if (att.hours) totalWorkedMinutes += att.hours * 60;
+      if (att.overtimeMinutes) totalOvertimeMinutes += att.overtimeMinutes;
+    });
+
+    // অনুপস্থিত এমপ্লয়ী হিসাব (মোট এমপ্লয়ী - (প্রেজেন্ট + লেট))
+    const accountedEmployees = presentCount + lateCount;
+    const absentCount = Math.max(0, totalEmployees - accountedEmployees);
+
+    // ঘণ্টা ও মিনিটে রূপান্তর
+    const workingHoursNum = (totalWorkedMinutes / 60).toFixed(1) + 'h';
+    const overtimeNum = (totalOvertimeMinutes / 60).toFixed(1) + 'h';
 
     return NextResponse.json({
       success: true,
+      branchName: currentUser.branchRef?.name || 'All Branches',
       data: {
-        totalBranches,
-        totalEmployees,
-        presentToday: presentToday < 0 ? 0 : presentToday,
-        absentToday: absentToday < 0 ? 0 : absentToday,
-        lateEmployees,
-        workingHours: '1,624h', // এটি চাইলে আপনি ডাইনামিক করতে পারেন
-        totalOvertime: '96h',   // এটিও চাইলে ડাইনামিক করতে পারেন
+        totalEmployees: totalEmployees.toString(),
+        present: presentCount.toString(),
+        late: lateCount.toString(),
+        absent: absentCount.toString(),
+        workingHours: workingHoursNum,
+        overtime: overtimeNum,
       },
-    });
+    }, { status: 200 });
+
   } catch (error) {
-    console.error('Error fetching dashboard stats:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    console.error('Dashboard Stats API Error:', error);
+    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
   }
 }

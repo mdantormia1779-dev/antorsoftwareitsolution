@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Camera, Clock, MapPin, ShieldCheck, LogOut } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Camera, Clock, MapPin, ShieldCheck, LogOut, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useRouter } from 'next/navigation';
@@ -10,53 +10,142 @@ const AttendancePage = () => {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [isCheckedIn, setIsCheckedIn] = useState(false);
+  const [checkInTime, setCheckInTime] = useState(null);
   const [timerText, setTimerText] = useState("00:00:00");
+  const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
+  // ইউজারের বর্তমান অ্যাটেন্ডেন্স স্ট্যাটাস ব্যাকএন্ড থেকে ফেচ করা
+  const fetchAttendanceStatus = useCallback(async () => {
+    try {
+      const storedUser = localStorage.getItem("user");
+      if (!storedUser) return;
+
+      const user = JSON.parse(storedUser);
+      const userId = user.id || user._id;
+      if (!userId) return;
+
+      const response = await fetch(`/api/employee/attendance-status?userId=${encodeURIComponent(userId)}`, {
+        method: "GET",
+        cache: "no-store",
+      });
+
+      if (!response.ok) return;
+
+      const data = await response.json();
+      
+      const hasCheckedOut = data.attendance?.checkOut;
+      const activeStatus = data.isCheckedIn && !hasCheckedOut;
+      const activeTime = data.checkInTime || data.attendance?.checkIn;
+
+      if (data.success && activeStatus && activeTime) {
+        setIsCheckedIn(true);
+        setCheckInTime(activeTime);
+        localStorage.setItem("isCheckedIn", "true");
+        localStorage.setItem("checkInTime", activeTime);
+      } else {
+        setIsCheckedIn(false);
+        setCheckInTime(null);
+        localStorage.setItem("isCheckedIn", "false");
+        localStorage.removeItem("checkInTime");
+      }
+    } catch (error) {
+      console.error("Error fetching attendance status:", error);
+    }
+  }, []);
+
+  // প্রথম লোডে এবং প্রতি ১৫ সেকেন্ড পর পর স্ট্যাটাস সিঙ্ক করা
   useEffect(() => {
     if (!mounted) return;
+    fetchAttendanceStatus();
 
-    const updateAttendanceTimer = () => {
-      const savedCheckedIn = localStorage.getItem("isCheckedIn") === "true";
-      const savedCheckInTime = localStorage.getItem("checkInTime");
+    const interval = setInterval(fetchAttendanceStatus, 15000);
+    return () => clearInterval(interval);
+  }, [mounted, fetchAttendanceStatus]);
 
-      setIsCheckedIn(savedCheckedIn);
+  // লাইভ টাইমার আপডেট করার ইফেক্ট
+  useEffect(() => {
+    if (!mounted || !isCheckedIn || !checkInTime) {
+      setTimerText("00:00:00");
+      return;
+    }
 
-      if (savedCheckedIn && savedCheckInTime) {
-        // ১. চেক-ইন করা থাকলে: লাইভ টাইমার কাউন্ট শুরু হবে
-        const start = new Date(savedCheckInTime).getTime();
-        const now = new Date().getTime();
-        const diffMs = Math.max(0, now - start);
+    const updateTimer = () => {
+      const start = new Date(checkInTime).getTime();
+      const now = new Date().getTime();
+      const diffMs = Math.max(0, now - start);
 
-        const hours = Math.floor(diffMs / (1000 * 60 * 60));
-        const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-        const seconds = Math.floor((diffMs % (1000 * 60)) / 1000);
+      const hours = Math.floor(diffMs / (1000 * 60 * 60));
+      const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((diffMs % (1000 * 60)) / 1000);
 
-        const formatted = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-        setTimerText(formatted);
-      } else {
-        // ২. চেক-ইন না থাকলে: ফিক্সড 00:00:00 থাকবে
-        setTimerText("00:00:00");
-      }
+      const formatted = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+      setTimerText(formatted);
     };
 
-    updateAttendanceTimer();
-    const interval = setInterval(updateAttendanceTimer, 1000);
-    return () => clearInterval(interval);
-  }, [mounted]);
+    updateTimer();
+    const timerInterval = setInterval(updateTimer, 1000);
+    return () => clearInterval(timerInterval);
+  }, [mounted, isCheckedIn, checkInTime]);
 
-  // চেক-ইন / চেক-আউট বাটন অ্যাকশন
-  const handleCheckAction = () => {
+  // চেক-ইন অথবা চেক-আউট হ্যান্ডলার
+  const handleCheckAction = async () => {
+    setErrorMessage("");
+
     if (!isCheckedIn) {
+      // ফেস স্ক্যান পেজে রিডাইরেক্ট
       router.push('/employee/facescan');
     } else {
-      localStorage.setItem("isCheckedIn", "false");
-      localStorage.removeItem("checkInTime");
-      setIsCheckedIn(false);
-      setTimerText("00:00:00");
+      // চেক-আউট API কল
+      try {
+        setLoading(true);
+
+        const storedUser = localStorage.getItem("user");
+        if (!storedUser) {
+          throw new Error("User session not found. Please login again.");
+        }
+
+        const user = JSON.parse(storedUser);
+        const userId = user.id || user._id;
+
+        if (!userId) {
+          throw new Error("User ID not found.");
+        }
+
+        const response = await fetch("/api/employee/checkout", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ userId }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+          throw new Error(data?.message || "Failed to complete check-out.");
+        }
+
+        // লোকাল স্টেট ও স্টোরেজ ক্লিয়ার করা
+        setIsCheckedIn(false);
+        setCheckInTime(null);
+        setTimerText("00:00:00");
+        localStorage.setItem("isCheckedIn", "false");
+        localStorage.removeItem("checkInTime");
+
+        await fetchAttendanceStatus();
+        alert("Checked out successfully!");
+        router.refresh();
+      } catch (error) {
+        console.error("Check-out error:", error);
+        setErrorMessage(error?.message || "Something went wrong during check-out.");
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
@@ -83,6 +172,13 @@ const AttendancePage = () => {
         </div>
       </div>
 
+      {/* Error Message Display */}
+      {errorMessage && (
+        <div className="bg-rose-50 border border-rose-200 text-rose-600 text-xs p-4 rounded-xl text-center font-medium">
+          {errorMessage}
+        </div>
+      )}
+
       {/* Main Grid Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
@@ -99,8 +195,8 @@ const AttendancePage = () => {
               
               {/* Dynamic Status Text */}
               {isCheckedIn ? (
-                <p className="text-xs sm:text-sm text-slate-400 font-medium mt-2 mb-8">
-                  Timer running
+                <p className="text-xs sm:text-sm text-emerald-600 font-semibold mt-2 mb-8">
+                  ● Working Session Active
                 </p>
               ) : (
                 <p className="text-xs sm:text-sm text-slate-400 font-medium mt-2 mb-8">
@@ -111,13 +207,19 @@ const AttendancePage = () => {
               {/* Action Button */}
               <Button 
                 onClick={handleCheckAction}
-                className={`w-full sm:max-w-md text-white py-6 sm:py-7 rounded-xl text-base sm:text-lg font-semibold flex items-center justify-center gap-2.5 shadow-md hover:shadow-lg transition-all active:scale-[0.99] cursor-pointer ${
+                disabled={loading}
+                className={`w-full sm:max-w-md text-white py-6 sm:py-7 rounded-xl text-base sm:text-lg font-semibold flex items-center justify-center gap-2.5 shadow-md hover:shadow-lg transition-all active:scale-[0.99] cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed ${
                   isCheckedIn 
                     ? "bg-red-600 hover:bg-red-700" 
                     : "bg-linear-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
                 }`}
               >
-                {isCheckedIn ? (
+                {loading ? (
+                  <span className="flex items-center gap-2">
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    Processing...
+                  </span>
+                ) : isCheckedIn ? (
                   <>
                     <LogOut className="w-5 h-5" />
                     Check Out

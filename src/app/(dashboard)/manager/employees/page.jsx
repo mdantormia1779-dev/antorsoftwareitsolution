@@ -21,14 +21,19 @@ const EmployeesPage = () => {
   const [loading, setLoading] = useState(true);
 
   // ব্যাকএন্ড থেকে রিয়েল ডাটা ফেচ করা
+  // ব্যাকএন্ড থেকে রিয়েল ডাটা ফেচ করা
   useEffect(() => {
     const fetchEmployees = async () => {
       try {
         setLoading(true);
-        const res = await fetch('/api/employees');
+        
+        // লোকালস্টোরেজ বা সেশন থেকে লগইন করা ইউজারের আইডি নেওয়া (আপনার প্রজেক্টের নিয়ম অনুযায়ী)
+        const loggedInUser = JSON.parse(localStorage.getItem('user') || '{}');
+        const userId = loggedInUser.id || ''; 
+
+        const res = await fetch(`/api/employees/manager?userId=${userId}`);
         const result = await res.json();
         
-        // ব্যাকএন্ড থেকে আসা ডাটা থেকে অ্যারে বের করে নেওয়া (যদি result সরাসরি অ্যারে হয় বা result.data তে থাকে)
         const rawList = Array.isArray(result) ? result : (result.data || []);
 
         if (Array.isArray(rawList)) {
@@ -44,6 +49,28 @@ const EmployeesPage = () => {
 
             const bgColors = ['bg-blue-600', 'bg-emerald-600', 'bg-rose-600', 'bg-violet-600', 'bg-amber-600'];
             
+            // আজকের অ্যাটেন্ডেন্স ডেটা চেক করা
+            const todayAttendance = emp.attendances && emp.attendances.length > 0 ? emp.attendances[0] : null;
+            
+            let checkInTimeStr = '—';
+            let checkInSubText = null;
+            let totalHoursStr = '0h 00m';
+
+            if (todayAttendance) {
+              if (todayAttendance.checkIn) {
+                const checkInDate = new Date(todayAttendance.checkIn);
+                checkInTimeStr = checkInDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+              }
+              if (todayAttendance.isLate) {
+                checkInSubText = 'LATE';
+              }
+              if (todayAttendance.hours) {
+                const hrs = Math.floor(todayAttendance.hours);
+                const mins = Math.round((todayAttendance.hours - hrs) * 60);
+                totalHoursStr = `${hrs}h ${mins}m`;
+              }
+            }
+
             return {
               realId: emp.id,
               id: emp.empCode || 'EMP-0000',
@@ -53,9 +80,9 @@ const EmployeesPage = () => {
               branch: emp.branchRef?.name || 'Main Branch',
               status: emp.status === 'ACTIVE' ? 'Active' : 'Inactive',
               faceStatus: emp.faceStatus === 'VERIFIED' ? 'Verified' : 'Pending',
-              checkIn: '—',
-              checkInSubText: null,
-              hours: '0h 00m',
+              checkIn: checkInTimeStr,
+              checkInSubText: checkInSubText,
+              hours: totalHoursStr,
             };
           });
 

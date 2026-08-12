@@ -169,6 +169,37 @@ const Employees = ({ initialEmployees = [], initialBranches = [], initialOrganiz
         isOpen={!!selectedDetailsEmployee}
         employee={selectedDetailsEmployee}
         onClose={() => setSelectedDetailsEmployee(null)}
+        onEdit={(emp) => {
+          setSelectedEditEmployee(emp); // এডিট মোডাল ওপেন করবে
+        }}
+        onToggleStatus={async (employeeId) => {
+          // স্ট্যাটাস পরিবর্তন করার লজিক (Active / Inactive)
+          const emp = employees.find(e => e.id === employeeId || e._id === employeeId);
+          if (!emp) return;
+          const newStatus = emp.status === 'Active' ? 'Inactive' : 'Active';
+          
+          try {
+            const response = await fetch('/api/employees', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ...emp, status: newStatus }),
+            });
+            const result = await response.json();
+            if (response.ok && result?.success) {
+              setEmployees((prev) =>
+                prev.map((item) => (item.id === employeeId || item._id === employeeId ? result.data : item))
+              );
+              setSelectedDetailsEmployee(result.data); // মডালের ভিতরের স্ট্যাটাস আপডেট করার জন্য
+            } else {
+              alert(result?.message || 'Failed to update status');
+            }
+          } catch (err) {
+            console.error('Status toggle error:', err);
+          }
+        }}
+        onDelete={(emp) => {
+          setSelectedDeleteEmployee(emp); // ডিলিট কনফার্মেশন মোডাল ওপেন করবে
+        }}
       />
 
       <EditEmployeeModal
