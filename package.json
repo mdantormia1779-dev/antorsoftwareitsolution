@@ -1,9 +1,10 @@
 {
   "name": "antorsoftware",
   "version": "0.1.0",
+  "type": "module",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "concurrently \"node src/server.js\" \"next dev\"",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
@@ -16,13 +17,18 @@
     "class-variance-authority": "^0.7.1",
     "cloudinary": "^2.10.0",
     "clsx": "^2.1.1",
+    "cors": "^2.8.6",
     "exceljs": "^4.4.0",
+    "express": "^5.2.1",
     "firebase": "^12.17.1",
+    "helmet": "^8.3.0",
+    "jsonwebtoken": "^9.0.3",
     "lucide-react": "^1.30.0",
+    "morgan": "^1.11.0",
     "next": "16.3.0",
     "next-cloudinary": "^6.18.8",
     "pdfkit": "^0.19.1",
-    "pg": "^8.22.0",
+    "pg": "^8.23.0",
     "prisma": "^7.9.1",
     "radix-ui": "^1.6.7",
     "react": "19.2.8",
@@ -34,6 +40,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "concurrently": "^10.0.5",
     "eslint": "^9",
     "eslint-config-next": "16.3.0",
     "tailwindcss": "^4"

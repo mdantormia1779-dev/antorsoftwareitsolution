@@ -15,19 +15,35 @@ const WeeklyAttendanceChart = ({ organizationId }) => {
   const [attendanceData, setAttendanceData] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  // ব্যাকএন্ড এপিআই ইউআরএল সেটআপ
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api/v1";
+
+  const getAuthHeaders = () => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+    return {
+      "Content-Type": "application/json",
+      ...(token ? { "Authorization": `Bearer ${token}` } : {})
+    };
+  };
+
   useEffect(() => {
     const fetchWeeklyData = async () => {
       try {
         setLoading(true);
-        const url = organizationId
-          ? `/api/dashboard/weekly-attendance?organizationId=${organizationId}`
-          : '/api/dashboard/weekly-attendance';
+        let url = `${apiUrl}/dashboard/weekly-attendance`;
+        if (organizationId) {
+          url += `?organizationId=${organizationId}`;
+        }
 
-        const res = await fetch(url);
+        const res = await fetch(url, {
+          method: "GET",
+          credentials: "include",
+          headers: getAuthHeaders(),
+        });
         const result = await res.json();
 
         if (result.success) {
-          setAttendanceData(result.data);
+          setAttendanceData(result.data || []);
         }
       } catch (error) {
         console.error('Failed to load weekly attendance chart:', error);

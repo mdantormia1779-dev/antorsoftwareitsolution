@@ -5,24 +5,23 @@ import { Building2, MapPin, Pencil, Trash2, Star } from 'lucide-react';
 
 const BranchCard = ({ branch, onEdit, onDelete }) => {
   // ডাটাবেজের ফিল্ডের সাথে সঠিক ম্যাপিং
-  const address = branch.address || branch.location || 'N/A';
+  const address = branch.address || 'N/A';
   
-  // ব্রাঞ্চের employees এরে থেকে প্রকৃত সংখ্যা গণনা করা হচ্ছে
-  const employeesCount = Array.isArray(branch.employees) 
-    ? branch.employees.length 
-    : (branch.employeesCount || 0);
+  // Prisma _count বা সরাসরি employees এরে থেকে সংখ্যা বের করার লজিক
+  const employeesCount = branch._count?.employees 
+    ?? (Array.isArray(branch.employees) ? branch.employees.length : 0);
 
   const score = branch.score ?? 100;
   const presentRate = branch.presentRate || '100%';
 
   // presentRate থেকে ৯০ বা তার বেশি হলে Green, কম হলে Yellow দেখাবে
-  const numericRate = parseInt(presentRate) || 0;
+  const numericRate = parseInt(presentRate) || 100;
   const isHigh = branch.presentStatus 
     ? branch.presentStatus === 'high' 
     : numericRate >= 90;
 
-  // ম্যানেজার নাম বের করার লজিক ( Prisma relation থেকে বা স্ট্রিং থেকে )
-  const managerName = branch.manager?.fullName || branch.managerName || branch.manager || 'Unassigned';
+  // ম্যানেজার নাম বের করার লজিক (Prisma relation থেকে)
+  const managerName = branch.manager?.fullName || branch.managerName || 'Unassigned';
 
   return (
     <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between space-y-4">

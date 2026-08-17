@@ -8,28 +8,6 @@ const ProfilePage = () => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    try {
-      const storedUser = localStorage.getItem('user');
-      if (storedUser) {
-        const parsedUser = JSON.parse(storedUser);
-        setUser(parsedUser);
-      }
-    } catch (err) {
-      console.error('Failed to parse user data from localStorage:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // লগআউট হ্যান্ডলার
-  const handleLogout = () => {
-    localStorage.removeItem('user');
-    localStorage.removeItem('isCheckedIn');
-    localStorage.removeItem('checkInTime');
-    router.push('/'); // আপনার প্রজেক্টের লগইন পেজ রুট অনুযায়ী পরিবর্তন করতে পারেন
-  };
-
   if (loading) {
     return (
       <div className="min-h-screen bg-[#f8fafc] flex items-center justify-center">

@@ -13,15 +13,24 @@ import {
 } from 'lucide-react';
 
 const ReportsPage = () => {
-  // লোডিং স্টেট যোগ করা হয়েছে যেন ইউজার বুঝতে পারে ডাউনলোড হচ্ছে
   const [loadingId, setLoadingId] = useState(null);
 
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api/v1";
+
+  const getAuthHeaders = () => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+    return {
+      "Content-Type": "application/json",
+      ...(token ? { "Authorization": `Bearer ${token}` } : {})
+    };
+  };
+
   const reports = [
-    { id: 'daily-attendance', title: 'Daily Attendance Report', description: "Snapshot of today's check-ins, absences and late arrivals.", icon: Calendar },
-    { id: 'monthly-attendance', title: 'Monthly Attendance Report', description: 'Aggregated attendance trends for the current month.', icon: BarChart2 },
-    { id: 'employee-report', title: 'Employee Report', description: 'Per-employee working hours, overtime and punctuality.', icon: Users },
-    { id: 'branch-report', title: 'Branch Report', description: 'Branch-level performance and headcount comparisons.', icon: Building2 },
-    { id: 'overtime-report', title: 'Overtime Report', description: 'Ranked overtime hours across all branches.', icon: TrendingUp },
+    { id: 'daily-attendance', title: 'Daily Attendance Report', description: "Snapshot of today's check-ins, absences and late arrivals.", icon: Calendar, endpoint: 'attendance' },
+    { id: 'monthly-attendance', title: 'Monthly Attendance Report', description: 'Aggregated attendance trends for the current month.', icon: BarChart2, endpoint: 'attendance' },
+    { id: 'employee-report', title: 'Employee Report', description: 'Per-employee working hours, overtime and punctuality.', icon: Users, endpoint: 'headcount' },
+    { id: 'branch-report', title: 'Branch Report', description: 'Branch-level performance and headcount comparisons.', icon: Building2, endpoint: 'leave' },
+    { id: 'overtime-report', title: 'Overtime Report', description: 'Ranked overtime hours across all branches.', icon: TrendingUp, endpoint: 'attendance' },
   ];
 
   const handleExport = async (type, report) => {
@@ -29,17 +38,27 @@ const ReportsPage = () => {
     setLoadingId(exportKey);
 
     try {
-      const res = await fetch(`/api/reports/export?type=${type}&reportId=${report.id}`);
+      // ব্যাকএন্ডের সঠিক রাউট (যেমন: /reports/attendance বা /reports/headcount) এ কল করা হচ্ছে
+      const res = await fetch(`${apiUrl}/reports/${report.endpoint}`, {
+        method: "GET",
+        credentials: "include",
+        headers: getAuthHeaders()
+      });
       
-      if (!res.ok) throw new Error('Generation failed');
+      const result = await res.json();
 
-      const blob = await res.blob();
+      if (!res.ok || !result.success) {
+        throw new Error(result.message || 'Generation failed');
+      }
+
+      // ডেটাকে ফাইলে কনভার্ট করে ডাউনলোড করার ব্যবস্থা
+      const reportContent = JSON.stringify(result.data, null, 2);
+      const blob = new Blob([reportContent], { type: type === 'PDF' ? 'text/plain;charset=utf-8' : 'text/csv;charset=utf-8' });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       
-      // ফাইল এক্সটেনশন টাইপ অনুযায়ী ফিক্স করে দেওয়া হলো
-      const extension = type === 'PDF' ? 'txt' : 'csv'; // চাইলে এখানে 'pdf' বা 'xlsx' ও দেওয়া যাবে
+      const extension = type === 'PDF' ? 'txt' : 'csv';
       a.download = `${report.id}_report.${extension}`;
       
       document.body.appendChild(a);
@@ -48,7 +67,7 @@ const ReportsPage = () => {
       window.URL.revokeObjectURL(url);
     } catch (error) {
       console.error('Export error:', error);
-      alert('Failed to generate report. Please try again.');
+      alert(error.message || 'Failed to generate report. Please try again.');
     } finally {
       setLoadingId(null);
     }
@@ -93,7 +112,11 @@ const ReportsPage = () => {
                   onClick={() => handleExport('PDF', report)}
                   className="flex-1 py-2 px-4 bg-white border border-slate-200/80 rounded-xl text-xs sm:text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-2xs disabled:opacity-50"
                 >
-                  {loadingId === `${report.id}-PDF` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5 text-slate-400 stroke-[2.5]" />}
+                  {loadingId === `${report.id}-PDF` ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Download className="w-3.5 h-3.5 text-slate-400 stroke-[2.5]" />
+                  )}
                   <span>{loadingId === `${report.id}-PDF` ? 'Generating...' : 'PDF'}</span>
                 </button>
 
@@ -102,7 +125,11 @@ const ReportsPage = () => {
                   onClick={() => handleExport('Excel', report)}
                   className="flex-1 py-2 px-4 bg-white border border-slate-200/80 rounded-xl text-xs sm:text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-2xs disabled:opacity-50"
                 >
-                  {loadingId === `${report.id}-Excel` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileSpreadsheet className="w-3.5 h-3.5 text-slate-400 stroke-[2.5]" />}
+                  {loadingId === `${report.id}-Excel` ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-slate-400 stroke-[2.5]" />
+                  )}
                   <span>{loadingId === `${report.id}-Excel` ? 'Generating...' : 'Excel'}</span>
                 </button>
               </div>

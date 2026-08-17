@@ -1,0 +1,436 @@
+{
+  "info": {
+    "name": "HR & Attendance Management System API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "authToken",
+      "value": "YOUR_JWT_TOKEN_HERE",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Organization",
+      "item": [
+        {
+          "name": "Create Organization",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Tech Innovators Ltd\",\n  \"industry\": \"Software Development\",\n  \"email\": \"hr@techinnovators.com\",\n  \"phone\": \"+8801700000000\",\n  \"website\": \"https://techinnovators.com\",\n  \"address\": \"Dhaka, Bangladesh\",\n  \"timezone\": \"Asia/Dhaka\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/organizations",
+              "host": ["{{baseUrl}}"],
+              "path": ["organizations"]
+            }
+          }
+        },
+        {
+          "name": "Get Organization Profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/organizations/profile",
+              "host": ["{{baseUrl}}"],
+              "path": ["organizations", "profile"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Auth",
+      "item": [
+        {
+          "name": "Login User",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"hr@techinnovators.com\",\n  \"password\": \"TempPassword123!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Branch",
+      "item": [
+        {
+          "name": "Create Branch",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Headquarters - Dhaka\",\n  \"address\": \"Banani, Dhaka\",\n  \"latitude\": 23.7937,\n  \"longitude\": 90.4066,\n  \"geofenceRadius\": 150,\n  \"phone\": \"+8801800000000\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/branches",
+              "host": ["{{baseUrl}}"],
+              "path": ["branches"]
+            }
+          }
+        },
+        {
+          "name": "Get All Branches",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/branches",
+              "host": ["{{baseUrl}}"],
+              "path": ["branches"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. User / Employee",
+      "item": [
+        {
+          "name": "Register Employee",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"antor@techinnovators.com\",\n  \"password\": \"Password123!\",\n  \"employeeId\": \"EMP-001\",\n  \"fullName\": \"Md Antor Mia\",\n  \"phone\": \"+8801900000000\",\n  \"gender\": \"MALE\",\n  \"role\": \"EMPLOYEE\",\n  \"employmentType\": \"FULL_TIME\",\n  \"joiningDate\": \"2026-04-01\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users",
+              "host": ["{{baseUrl}}"],
+              "path": ["users"]
+            }
+          }
+        },
+        {
+          "name": "Get All Employees",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users",
+              "host": ["{{baseUrl}}"],
+              "path": ["users"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Attendance",
+      "item": [
+        {
+          "name": "Check In",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"branchId\": \"YOUR_BRANCH_ID_HERE\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/attendance/check-in",
+              "host": ["{{baseUrl}}"],
+              "path": ["attendance", "check-in"]
+            }
+          }
+        },
+        {
+          "name": "Check Out",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/attendance/check-out",
+              "host": ["{{baseUrl}}"],
+              "path": ["attendance", "check-out"]
+            }
+          }
+        },
+        {
+          "name": "My Attendance History",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/attendance/my-history",
+              "host": ["{{baseUrl}}"],
+              "path": ["attendance", "my-history"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Verification",
+      "item": [
+        {
+          "name": "Verify Geo Location",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"branchId\": \"YOUR_BRANCH_ID_HERE\",\n  \"latitude\": 23.7938,\n  \"longitude\": 90.4067,\n  \"verificationType\": \"CHECK_IN\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/verification/geo",
+              "host": ["{{baseUrl}}"],
+              "path": ["verification", "geo"]
+            }
+          }
+        },
+        {
+          "name": "Verify Face Match",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"similarityScore\": 0.92,\n  \"imageUrl\": \"https://example.com/uploads/face.jpg\",\n  \"verificationType\": \"CHECK_IN\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/verification/face",
+              "host": ["{{baseUrl}}"],
+              "path": ["verification", "face"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Leave",
+      "item": [
+        {
+          "name": "Create Leave Policy",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"leaveType\": \"ANNUAL\",\n  \"allowedDays\": 14,\n  \"carryForward\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/leave/policies",
+              "host": ["{{baseUrl}}"],
+              "path": ["leave", "policies"]
+            }
+          }
+        },
+        {
+          "name": "Apply for Leave",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"leaveType\": \"ANNUAL\",\n  \"duration\": \"FULL_DAY\",\n  \"startDate\": \"2026-05-10\",\n  \"endDate\": \"2026-05-12\",\n  \"totalDays\": 3,\n  \"reason\": \"Family vacation\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/leave/apply",
+              "host": ["{{baseUrl}}"],
+              "path": ["leave", "apply"]
+            }
+          }
+        },
+        {
+          "name": "Get My Leave Balances",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/leave/balances",
+              "host": ["{{baseUrl}}"],
+              "path": ["leave", "balances"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. Shift",
+      "item": [
+        {
+          "name": "Create Shift",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"General Shift\",\n  \"type\": \"FIXED\",\n  \"startTime\": \"09:00\",\n  \"endTime\": \"17:00\",\n  \"breakMinutes\": 60,\n  \"workingHours\": 8,\n  \"lateAfterMinutes\": 15\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/shifts",
+              "host": ["{{baseUrl}}"],
+              "path": ["shifts"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "9. Payroll",
+      "item": [
+        {
+          "name": "Upsert Salary Structure",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"USER_ID_HERE\",\n  \"baseSalary\": 40000,\n  \"houseRentAllowance\": 10000,\n  \"medicalAllowance\": 3000,\n  \"transportAllowance\": 2000,\n  \"taxDeduction\": 1500,\n  \"providentFund\": 2000\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/payroll/salary-structure",
+              "host": ["{{baseUrl}}"],
+              "path": ["payroll", "salary-structure"]
+            }
+          }
+        },
+        {
+          "name": "Generate Monthly Payroll",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"month\": 4,\n  \"year\": 2026\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/payroll/generate",
+              "host": ["{{baseUrl}}"],
+              "path": ["payroll", "generate"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "10. Performance",
+      "item": [
+        {
+          "name": "Create KPI",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"USER_ID_HERE\",\n  \"title\": \"Complete Frontend Dashboard\",\n  \"description\": \"Build responsive UI components with React & Tailwind\",\n  \"targetValue\": 100,\n  \"currentValue\": 50,\n  \"weight\": 2.0,\n  \"dueDate\": \"2026-06-30\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/performance/kpis",
+              "host": ["{{baseUrl}}"],
+              "path": ["performance", "kpis"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "11. Reports",
+      "item": [
+        {
+          "name": "Get Attendance Report",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/reports/attendance?startDate=2026-04-01&endDate=2026-04-30",
+              "host": ["{{baseUrl}}"],
+              "path": ["reports", "attendance"],
+              "query": [
+                { "key": "startDate", "value": "2026-04-01" },
+                { "key": "endDate", "value": "2026-04-30" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Headcount Report",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/reports/headcount",
+              "host": ["{{baseUrl}}"],
+              "path": ["reports", "headcount"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

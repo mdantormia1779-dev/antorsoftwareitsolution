@@ -11,31 +11,43 @@ import {
   TrendingUp,
 } from 'lucide-react';
 
-const DashboardStats = ({ organizationId }) => {
+const DashboardStats = () => {
   const [stats, setStats] = useState({
     totalBranches: 0,
     totalEmployees: 0,
     presentToday: 0,
     absentToday: 0,
     lateEmployees: 0,
-    workingHours: '1,624h',
-    totalOvertime: '96h',
+    workingHours: '0h',
+    totalOvertime: '0h',
   });
   const [loading, setLoading] = useState(true);
+
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api/v1";
+
+  const getAuthHeaders = () => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+    return {
+      "Content-Type": "application/json",
+      ...(token ? { "Authorization": `Bearer ${token}` } : {})
+    };
+  };
 
   useEffect(() => {
     const fetchStats = async () => {
       try {
         setLoading(true);
-        const url = organizationId 
-          ? `/api/dashboard/stats?organizationId=${organizationId}` 
-          : '/api/dashboard/stats';
+        const url = `${apiUrl}/dashboard/stats`;
           
-        const res = await fetch(url);
+        const res = await fetch(url, {
+          method: "GET",
+          credentials: "include",
+          headers: getAuthHeaders(),
+        });
         const result = await res.json();
 
-        if (result.success) {
-          setStats(result.data);
+        if (res.ok && (result.success || result.data)) {
+          setStats(result.data || result);
         }
       } catch (error) {
         console.error('Failed to load dashboard stats:', error);
@@ -45,7 +57,7 @@ const DashboardStats = ({ organizationId }) => {
     };
 
     fetchStats();
-  }, [organizationId]);
+  }, [apiUrl]);
 
   const statsData = [
     {
@@ -112,7 +124,7 @@ const DashboardStats = ({ organizationId }) => {
       id: 7,
       value: stats.totalOvertime,
       label: 'Total Overtime',
-      badge: '↗ +18h',
+      badge: '↗ Active',
       badgeColor: 'text-purple-500 bg-purple-50/60',
       icon: TrendingUp,
       iconBg: 'bg-purple-600',

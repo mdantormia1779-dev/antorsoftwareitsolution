@@ -14,12 +14,12 @@ const AddEmployeeModal = ({ isOpen, onClose, onEmployeeCreated, branches = [], o
     email: '',
     phone: '',
     employeeId: '',
-    pin: '',
+    password: '', // ব্যাকএন্ডের সাথে মিল রেখে pin এর বদলে password ফিল্ড রাখা হলো
     organizationId: '',
     branchId: '',
-    systemRole: 'EMPLOYEE',
-    designation: 'Frontend Developer',
-    department: 'Engineering',
+    role: 'EMPLOYEE',
+    departmentId: '', 
+    designationId: '',
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -32,12 +32,12 @@ const AddEmployeeModal = ({ isOpen, onClose, onEmployeeCreated, branches = [], o
         email: '',
         phone: '',
         employeeId: generateUniqueEmpId(),
-        pin: '',
+        password: '',
         organizationId: defaultOrgId || (organizations.length > 0 ? organizations[0].id : ''),
         branchId: branches.length > 0 ? branches[0].id : '',
-        systemRole: 'EMPLOYEE',
-        designation: 'Frontend Developer',
-        department: 'Engineering',
+        role: 'EMPLOYEE',
+        departmentId: '',
+        designationId: '',
       });
       setErrorMsg('');
     }
@@ -45,59 +45,28 @@ const AddEmployeeModal = ({ isOpen, onClose, onEmployeeCreated, branches = [], o
 
   if (!isOpen) return null;
 
-  const designationOptions = {
-    MANAGER: [
-      'Engineering Manager',
-      'HR Manager',
-      'Project Manager',
-      'Product Manager',
-    ],
-    EMPLOYEE: [
-      'Frontend Developer',
-      'Backend Developer',
-      'Fullstack Developer',
-      'UI/UX Designer',
-      'QA Engineer',
-    ],
-    ADMIN: ['System Administrator', 'Operations Head'],
-  };
-
-  const handleSystemRoleChange = (e) => {
-    const selectedRole = e.target.value;
-    setFormData((prev) => ({
-      ...prev,
-      systemRole: selectedRole,
-      designation: designationOptions[selectedRole]?.[0] || 'Employee',
-      branchId: (selectedRole === 'EMPLOYEE' || selectedRole === 'MANAGER') && branches.length > 0 ? branches[0].id : '',
-    }));
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
     setErrorMsg('');
 
-    const resolvedBranchId = 
-      (formData.systemRole === 'EMPLOYEE' || formData.systemRole === 'MANAGER') && formData.branchId !== '' 
-        ? formData.branchId 
-        : null;
-
+    // ব্যাকএন্ডের createUserData ফাংশনের রিসিভ করা স্ট্রাকচার অনুযায়ী পে-লোড তৈরি করা হলো
     const payload = {
-      organizationId: formData.organizationId,
-      branchId: resolvedBranchId,
-      empCode: formData.employeeId,
       fullName: formData.fullName,
       email: formData.email,
-      phone: formData.phone,
-      pin: formData.pin,
-      role: formData.systemRole,
-      department: formData.department,
-      designation: formData.designation,
+      phone: formData.phone || null,
+      employeeId: formData.employeeId,
+      password: formData.password || undefined, // পাসওয়ার্ড না দিলে ব্যাকএন্ড নিজে ডিফল্ট সেট করে নেবে
+      role: formData.role,
+      branchId: (formData.role === 'EMPLOYEE' || formData.role === 'MANAGER') && formData.branchId ? formData.branchId : null,
+      departmentId: formData.departmentId || null,
+      designationId: formData.designationId || null,
     };
 
     try {
-      // সরাসরি আপনার ব্যাকএন্ড API বা প্যারেন্ট ফাংশনে ডাটা পাঠানো হচ্ছে
-      await onEmployeeCreated(payload);
+      // ব্যাকএন্ড কন্ট্রোলারের জন্য organizationId প্রথম আর্গুমেন্ট এবং ডেটা দ্বিতীয় আর্গুমেন্ট হিসেবে পাঠাতে হবে
+      await onEmployeeCreated(formData.organizationId, payload);
+      onClose();
     } catch (err) {
       console.error('Submit Error:', err);
       setErrorMsg(err.message || 'Something went wrong.');
@@ -119,6 +88,7 @@ const AddEmployeeModal = ({ isOpen, onClose, onEmployeeCreated, branches = [], o
           <button
             type="button"
             onClick={onClose}
+            disabled={isSubmitting}
             className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all cursor-pointer"
           >
             <X className="w-5 h-5" />
@@ -194,7 +164,7 @@ const AddEmployeeModal = ({ isOpen, onClose, onEmployeeCreated, branches = [], o
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1.5">Employee Code (EMP ID) *</label>
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5">Employee ID *</label>
               <input
                 type="text"
                 readOnly
@@ -204,25 +174,23 @@ const AddEmployeeModal = ({ isOpen, onClose, onEmployeeCreated, branches = [], o
             </div>
           </div>
 
-          {/* PIN & Access Role */}
+          {/* Password & Access Role */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1.5">PIN *</label>
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5">Password</label>
               <input
                 type="password"
-                required
-                placeholder="1234"
-                maxLength={6}
-                value={formData.pin}
-                onChange={(e) => setFormData({ ...formData, pin: e.target.value })}
+                placeholder="Enter Your Login Password Here"
+                value={formData.password}
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                 className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm text-slate-800 font-medium focus:outline-none focus:border-indigo-500 bg-slate-50/50"
               />
             </div>
             <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1.5">Access Role *</label>
               <select
-                value={formData.systemRole}
-                onChange={handleSystemRoleChange}
+                value={formData.role}
+                onChange={(e) => setFormData({ ...formData, role: e.target.value })}
                 className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-medium bg-slate-50/50 cursor-pointer"
               >
                 <option value="EMPLOYEE">Employee</option>
@@ -232,65 +200,34 @@ const AddEmployeeModal = ({ isOpen, onClose, onEmployeeCreated, branches = [], o
             </div>
           </div>
 
-          {/* Assigned Branch & Department */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {formData.systemRole === 'EMPLOYEE' || formData.systemRole === 'MANAGER' ? (
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Assigned Branch</label>
-                <select
-                  value={formData.branchId}
-                  onChange={(e) => setFormData({ ...formData, branchId: e.target.value })}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-medium bg-slate-50/50 cursor-pointer"
-                >
-                  {branches.length > 0 ? (
-                    branches.map((b) => (
-                      <option key={b.id} value={b.id}>
-                        {b.name}
-                      </option>
-                    ))
-                  ) : (
-                    <option value="">No branches available</option>
-                  )}
-                </select>
-              </div>
-            ) : (
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Assigned Branch</label>
-                <input
-                  type="text"
-                  readOnly
-                  value="N/A (Admin)"
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm text-slate-400 font-medium bg-slate-100 cursor-not-allowed"
-                />
-              </div>
-            )}
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1.5">Department *</label>
+          {/* Assigned Branch */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Assigned Branch</label>
+            {formData.role === 'EMPLOYEE' || formData.role === 'MANAGER' ? (
               <select
-                value={formData.department}
-                onChange={(e) => setFormData({ ...formData, department: e.target.value })}
+                value={formData.branchId}
+                onChange={(e) => setFormData({ ...formData, branchId: e.target.value })}
                 className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-medium bg-slate-50/50 cursor-pointer"
               >
-                <option value="Engineering">Engineering</option>
-                <option value="Design">Design</option>
-                <option value="Human Resources">Human Resources</option>
+                <option value="">Select Branch (Optional)</option>
+                {branches.length > 0 ? (
+                  branches.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))
+                ) : (
+                  <option value="" disabled>No branches available</option>
+                )}
               </select>
-            </div>
-          </div>
-
-          {/* Designation */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Designation *</label>
-            <select
-              value={formData.designation}
-              onChange={(e) => setFormData({ ...formData, designation: e.target.value })}
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-medium bg-slate-50/50 cursor-pointer"
-            >
-              {designationOptions[formData.systemRole]?.map((item, index) => (
-                <option key={index} value={item}>{item}</option>
-              ))}
-            </select>
+            ) : (
+              <input
+                type="text"
+                readOnly
+                value="N/A (Admin)"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm text-slate-400 font-medium bg-slate-100 cursor-not-allowed"
+              />
+            )}
           </div>
 
           {/* Buttons */}
@@ -324,5 +261,7 @@ const AddEmployeeModal = ({ isOpen, onClose, onEmployeeCreated, branches = [], o
     </div>
   );
 };
+
+AddEmployeeModal.displayName = 'AddEmployeeModal';
 
 export default AddEmployeeModal;

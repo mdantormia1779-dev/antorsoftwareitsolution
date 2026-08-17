@@ -6,311 +6,982 @@ datasource db {
   provider = "postgresql"
 }
 
-// --------------------------------------
+// ======================================================
 // ENUMS
-// --------------------------------------
+// ======================================================
 
 enum Role {
+  SUPER_ADMIN
   ADMIN
   MANAGER
   EMPLOYEE
 }
 
-enum Status {
+enum UserStatus {
   ACTIVE
   INACTIVE
+  SUSPENDED
+  TERMINATED
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum EmploymentType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  INTERN
+}
+
+enum AuthProvider {
+  LOCAL
+  FIREBASE
+  GOOGLE
 }
 
 enum AttendanceStatus {
   PRESENT
   LATE
   ABSENT
+  HALF_DAY
   ON_LEAVE
 }
 
-enum FaceStatus {
-  VERIFIED
+enum AttendanceType {
+  CHECK_IN
+  CHECK_OUT
+}
+
+enum FaceVerificationStatus {
   PENDING
+  VERIFIED
   FAILED
 }
 
-enum QueueStatus {
+enum GeoVerificationStatus {
+  PENDING
+  VERIFIED
+  OUTSIDE_GEOFENCE
+  FAILED
+}
+
+enum VerificationQueueStatus {
   PENDING
   APPROVED
   REJECTED
+}
+
+enum VerificationReason {
+  FACE_MISMATCH
+  OUTSIDE_GEOFENCE
+  LOCATION_PERMISSION_DENIED
+  CAMERA_PERMISSION_DENIED
+  MANUAL_REVIEW
+}
+
+enum LeaveType {
+  CASUAL
+  SICK
+  ANNUAL
+  EMERGENCY
+  MATERNITY
+  PATERNITY
+  UNPAID
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum LeaveDuration {
+  FULL_DAY
+  HALF_DAY
+}
+
+enum ShiftType {
+  FIXED
+  FLEXIBLE
+  ROTATIONAL
+}
+
+enum PayrollStatus {
+  DRAFT
+  GENERATED
+  PAID
+  CANCELLED
+}
+
+enum NotificationType {
+  SYSTEM
+  ATTENDANCE
+  LEAVE
+  PAYROLL
+  ANNOUNCEMENT
+  EMERGENCY
 }
 
 enum NotificationPriority {
   LOW
   MEDIUM
   HIGH
+  URGENT
 }
 
-// --------------------------------------
-// MODELS
-// --------------------------------------
+enum ReportType {
+  DAILY
+  WEEKLY
+  MONTHLY
+  YEARLY
+}
 
-// 🏢 Organization Model (Multi-tenant support)
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  CHECK_IN
+  CHECK_OUT
+  APPROVE
+  REJECT
+}
+
+enum PerformanceLevel {
+  EXCELLENT
+  GOOD
+  AVERAGE
+  POOR
+}
+
+// ======================================================
+// ORGANIZATION
+// ======================================================
+
 model Organization {
-  id        String   @id @default(uuid())
-  name      String
-  industry  String?
-  timezone  String   @default("UTC")
-  address   String?
-  
+  id String @id @default(uuid())
+
+  name     String
+  industry String?
+
+  email   String?
+  phone   String?
+  website String?
+
+  logo    String?
+  address String?
+
+  timezone String @default("UTC")
+
+  isActive Boolean @default(true)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  branches      Branch[]
-  users         User[]
-  notifications Notification[]
+  branches           Branch[]
+  departments        Department[]
+  designations       Designation[]
+  users              User[]
+  invitations        Invitation[]
+  leavePolicies      LeavePolicy[]
+  shifts             Shift[]
+  holidays           Holiday[]
+  announcements      Announcement[]
+  reports            Report[]
+  dashboardAnalytics DashboardAnalytics?
+  systemSetting      SystemSetting?
 
   @@map("organizations")
 }
 
-// 👑 Admin Model (Firebase UID বা সেপারেট এডমিন অ্যাকাউন্ট)
-model Admin {
-  id          String   @id // Firebase UID
-  email       String   @unique
-  fullName    String
-  companyName String
-  password    String   // Admin-er password field
-  role        String   @default("ADMIN")
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+// ======================================================
+// BRANCH
+// ======================================================
 
-  @@map("admins")
-}
-
-// 👤 User Model (Employee & Manager)
-model User {
-  id             String   @id @default(uuid())
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  
-  empCode        String   @unique 
-  fullName       String
-  email          String   @unique
-  phone          String?
-  pin            String   
-  role           Role     @default(EMPLOYEE)
-  
-  // Job & Company Details
-  companyName    String?
-  branchId       String?  
-  branchRef      Branch?  @relation("BranchEmployees", fields: [branchId], references: [id], onDelete: SetNull)
-  
-  managedBranch  Branch?  @relation("BranchManager")
-
-  department     String   @default("Engineering")
-  designation    String   @default("Frontend Developer")
-  joiningDate    DateTime @default(now())
-  status         Status   @default(ACTIVE)
-
-  // Profile Visuals & Face Verification
-  avatar          String?  
-  avatarColor     String?  
-  initials        String?  
-  faceStatus      FaceStatus @default(PENDING)
-  faceEmbeddingId String?
-
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  attendances           Attendance[]
-  faceVerifications     FaceVerification[]
-  geoVerifications      GeoVerification[]
-  verificationDecisions VerificationQueue[] @relation("ManagerDecisions")
-  verificationQueueItems VerificationQueue[] @relation("QueueEmployee")
-  auditLogs             AuditLog[]
-  createdNotifications  Notification[]
-
-  @@map("users")
-}
-
-// 🏠 Branch Model
 model Branch {
-  id             String   @id @default(cuid())
+  id String @id @default(uuid())
+
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  
-  name           String   @unique
-  address        String
-  latitude       Float    @default(0.0)
-  longitude      Float    @default(0.0)
-  geofenceRadius Int      @default(150)
-  startTime      String   @default("09:00 AM")
-  endTime        String   @default("06:00 PM")
-  weeklyHolidays String[] @default(["Sat", "Sun"])
-  
-  managerId      String?  @unique
-  manager        User?    @relation("BranchManager", fields: [managerId], references: [id], onDelete: SetNull)
 
-  employees      User[]   @relation("BranchEmployees")
-  attendances    Attendance[]
+  name    String
+  address String
+
+  latitude       Float?
+  longitude      Float?
+  geofenceRadius Int    @default(150)
+
+  phone    String?
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  managerId String? @unique
+  manager   User?   @relation("BranchManager", fields: [managerId], references: [id], onDelete: SetNull)
+
+  employees          User[]              @relation("BranchEmployees")
+  attendances        Attendance[]
+  geoVerifications   GeoVerification[]
   verificationQueues VerificationQueue[]
-  notifications  Notification[]
 
-  score          Int      @default(100)
-  presentRate    String   @default("100%")
-  
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
+  @@unique([organizationId, name])
   @@map("branches")
 }
 
-// ⏱️ Attendance Model
-model Attendance {
-  id        String           @id @default(uuid())
+// ======================================================
+// DEPARTMENT
+// ======================================================
+
+model Department {
+  id String @id @default(uuid())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  name        String
+  description String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employees User[]
+
+  @@unique([organizationId, name])
+  @@map("departments")
+}
+
+// ======================================================
+// DESIGNATION
+// ======================================================
+
+model Designation {
+  id String @id @default(uuid())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  title       String
+  description String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employees User[]
+
+  @@unique([organizationId, title])
+  @@map("designations")
+}
+
+// ======================================================
+// USER
+// ======================================================
+
+model User {
+  id String @id @default(uuid())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  // Authentication
+  email         String
+  password      String?
+  provider      AuthProvider @default(LOCAL)
+  emailVerified Boolean      @default(false)
+
+  // Employee Information
+  employeeId  String
+  fullName    String
+  phone       String?
+  gender      Gender?
+  dateOfBirth DateTime?
+  nationalId  String?
+  avatar      String?
+
+  // Role & Status
+  role   Role       @default(EMPLOYEE)
+  status UserStatus @default(ACTIVE)
+
+  // Relations (Department, Designation, Branch)
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+
+  designationId String?
+  designation   Designation? @relation(fields: [designationId], references: [id], onDelete: SetNull)
+
+  branchId      String?
+  branch        Branch? @relation("BranchEmployees", fields: [branchId], references: [id], onDelete: SetNull)
+  managedBranch Branch? @relation("BranchManager")
+
+  // Employment
+  employmentType   EmploymentType @default(FULL_TIME)
+  joiningDate      DateTime       @default(now())
+  probationEndDate DateTime?
+  terminationDate  DateTime?
+
+  // Security
+  pin                 String?
+  twoFactorEnabled    Boolean   @default(false)
+  failedLoginAttempts Int       @default(0)
+  accountLocked       Boolean   @default(false)
+  lastLogin           DateTime?
+
+  // Face Recognition
+  faceEmbeddingId String?
+  faceRegistered  Boolean @default(false)
+
+  // Audit & Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Reverse Relations
+  sessions              Session[]
+  passwordResets        PasswordReset[]
+  notifications         Notification[]
+  attendances           Attendance[]
+  faceEmbedding         FaceEmbedding?
+  faceVerifications     FaceVerification[]
+  geoVerifications      GeoVerification[]
+  verificationQueues    VerificationQueue[] @relation("QueueManager")
+  managedQueues         VerificationQueue[] @relation("ManagerDecision")
+  leaveBalances         LeaveBalance[]      @relation("LeaveBalanceUser")
+  leaveRequests         LeaveRequest[]
+  approvedLeaveRequests LeaveRequest[]      @relation("LeaveApprover")
+  employeeShifts        EmployeeShift[]
+  salaryStructure       SalaryStructure?
+  payrolls              Payroll[]
+  announcements         Announcement[]      @relation("AnnouncementCreator")
+  reports               Report[]            @relation("ReportGenerator")
+  employeePerformances  EmployeePerformance[]
+  activityTimelines     ActivityTimeline[]
+  auditLogs             AuditLog[]
+
+  kpis                 Kpi[]
+  employeeReviews      PerformanceReview[]   @relation("EmployeeReviews")
+  reviewerReviews      PerformanceReview[]   @relation("ReviewerReviews")
+
+  @@unique([organizationId, employeeId])
+  @@unique([organizationId, email])
+  @@map("users")
+}
+
+// ======================================================
+// SESSION
+// ======================================================
+
+model Session {
+  id        String   @id @default(uuid())
   userId    String
-  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  branchId  String
-  branch    Branch           @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  
-  date      DateTime         @default(now())
-  checkIn   DateTime?
-  checkOut  DateTime?
-  
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  ipAddress String?
+  device    String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@map("sessions")
+}
+
+// ======================================================
+// PASSWORD RESET
+// ======================================================
+
+model PasswordReset {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  otp       String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@map("password_resets")
+}
+
+// ======================================================
+// INVITATION
+// ======================================================
+
+model Invitation {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  email          String
+  role           Role
+  token          String       @unique
+  expiresAt      DateTime
+  accepted       Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+
+  @@map("invitations")
+}
+
+// ======================================================
+// NOTIFICATION
+// ======================================================
+
+model Notification {
+  id        String               @id @default(uuid())
+  userId    String
+  user      User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType     @default(SYSTEM)
+  priority  NotificationPriority @default(MEDIUM)
+  title     String
+  message   String
+  actionUrl String?
+  imageUrl  String?
+  isRead    Boolean              @default(false)
+  readAt    DateTime?
+  createdAt DateTime             @default(now())
+
+  @@index([userId])
+  @@index([isRead])
+  @@map("notifications")
+}
+
+// ======================================================
+// ATTENDANCE
+// ======================================================
+
+model Attendance {
+  id       String   @id @default(uuid())
+  userId   String
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branchId String
+  branch   Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  workDate DateTime @db.Date
+
+  checkIn         DateTime?
+  checkOut        DateTime?
+  workingMinutes  Int       @default(0)
+  overtimeMinutes Int       @default(0)
+  lateMinutes     Int       @default(0)
+  isLate          Boolean   @default(false)
+  status          AttendanceStatus @default(PRESENT)
+
   checkInFaceVerificationId  String?
   checkInFaceVerification    FaceVerification? @relation("CheckInFaceVerification", fields: [checkInFaceVerificationId], references: [id], onDelete: SetNull)
-  
-  checkInGeoVerificationId   String?
-  checkInGeoVerification     GeoVerification?  @relation("CheckInGeoVerification", fields: [checkInGeoVerificationId], references: [id], onDelete: SetNull)
-  
   checkOutFaceVerificationId String?
   checkOutFaceVerification   FaceVerification? @relation("CheckOutFaceVerification", fields: [checkOutFaceVerificationId], references: [id], onDelete: SetNull)
-  
-  checkOutGeoVerificationId  String?
-  checkOutGeoVerification    GeoVerification?  @relation("CheckOutGeoVerification", fields: [checkOutGeoVerificationId], references: [id], onDelete: SetNull)
 
-  isLate          Boolean          @default(false)
-  hours           Float?           // Total working hours in decimals (e.g., 8.5)
-  overtimeMinutes Int              @default(0)
-  lateMinutes     Int              @default(0)
-  status          AttendanceStatus @default(PRESENT)
+  checkInGeoVerificationId  String?
+  checkInGeoVerification    GeoVerification? @relation("CheckInGeoVerification", fields: [checkInGeoVerificationId], references: [id], onDelete: SetNull)
+  checkOutGeoVerificationId String?
+  checkOutGeoVerification   GeoVerification? @relation("CheckOutGeoVerification", fields: [checkOutGeoVerificationId], references: [id], onDelete: SetNull)
 
   verificationQueue VerificationQueue[]
 
-  createdAt DateTime         @default(now())
-  updatedAt DateTime         @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  @@unique([userId, date])
-  @@map("attendances") 
+  @@unique([userId, workDate])
+  @@index([userId])
+  @@index([branchId])
+  @@index([workDate])
+  @@map("attendances")
 }
 
-// 📸 Face Verifications Log
+// ======================================================
+// FACE EMBEDDING
+// ======================================================
+
+model FaceEmbedding {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  embedding Json
+  version   String?
+  provider  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("face_embeddings")
+}
+
+// ======================================================
+// FACE VERIFICATION
+// ======================================================
+
 model FaceVerification {
-  id           String   @id @default(uuid())
-  userId       String
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  matchScore   Float
-  result       String   // "VERIFIED" or "FAILED"
-  capturedAt   DateTime @default(now())
-  providerRef  String?
+  id               String                 @id @default(uuid())
+  userId           String
+  user             User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  verificationType AttendanceType
+  similarityScore  Float
+  status           FaceVerificationStatus
+  provider         String?
+  imageUrl         String?
+  deviceInfo       String?
+  ipAddress        String?
+  createdAt        DateTime               @default(now())
 
   checkInAttendances  Attendance[] @relation("CheckInFaceVerification")
   checkOutAttendances Attendance[] @relation("CheckOutFaceVerification")
   verificationQueues  VerificationQueue[]
 
+  @@index([userId])
+  @@index([status])
   @@map("face_verifications")
 }
 
-// 📍 Geo Verifications Log
+// ======================================================
+// GEO VERIFICATION
+// ======================================================
+
 model GeoVerification {
-  id           String   @id @default(uuid())
-  userId       String
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  branchId     String
-  
-  latitude     Float
-  longitude    Float
-  distanceM    Float
-  withinRadius Boolean
-  accuracyM    Float?
-  capturedAt   DateTime @default(now())
+  id                  String                @id @default(uuid())
+  userId              String
+  user                User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branchId            String
+  branch              Branch                @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  verificationType    AttendanceType
+  latitude            Float
+  longitude           Float
+  accuracy            Float?
+  branchLatitude      Float
+  branchLongitude     Float
+  distanceInMeters    Float
+  allowedRadiusInMeters Int
+  withinGeofence      Boolean
+  status              GeoVerificationStatus
+  createdAt           DateTime              @default(now())
 
   checkInAttendances  Attendance[] @relation("CheckInGeoVerification")
-  checkOutAttendances Attendance[] @relation("CheckOutGeoVerification")
+  CheckOutAttendances Attendance[] @relation("CheckOutGeoVerification")
   verificationQueues  VerificationQueue[]
 
+  @@index([userId])
+  @@index([branchId])
   @@map("geo_verifications")
 }
 
-// ⏳ Verification Queue (Manager Approval)
+// ======================================================
+// VERIFICATION QUEUE
+// ======================================================
+
 model VerificationQueue {
-  id                 String        @id @default(uuid())
-  userId             String
-  user               User          @relation("QueueEmployee", fields: [userId], references: [id], onDelete: Cascade)
-  branchId           String
-  branch             Branch        @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  attendanceId       String
-  attendance         Attendance    @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
-  
-  faceVerificationId String?
-  faceVerification   FaceVerification? @relation(fields: [faceVerificationId], references: [id], onDelete: SetNull)
-  
-  geoVerificationId  String?
-  geoVerification    GeoVerification?  @relation(fields: [geoVerificationId], references: [id], onDelete: SetNull)
-  
-  status             QueueStatus   @default(PENDING)
-  decidedBy          String?
-  decisionMaker      User?         @relation("ManagerDecisions", fields: [decidedBy], references: [id], onDelete: SetNull)
-  decidedAt          DateTime?
-  
-  createdAt          DateTime      @default(now())
+  id                  String                  @id @default(uuid())
+  userId              String
+  user                User                    @relation("QueueManager", fields: [userId], references: [id], onDelete: Cascade)
+  branchId            String
+  branch              Branch                  @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  attendanceId        String
+  attendance          Attendance              @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+  reason              VerificationReason
+  status              VerificationQueueStatus @default(PENDING)
+  faceVerificationId  String?
+  faceVerification    FaceVerification?       @relation(fields: [faceVerificationId], references: [id], onDelete: SetNull)
+  geoVerificationId   String?
+  geoVerification     GeoVerification?        @relation(fields: [geoVerificationId], references: [id], onDelete: SetNull)
+  managerId           String?
+  manager             User?                   @relation("ManagerDecision", fields: [managerId], references: [id], onDelete: SetNull)
+  comment             String?
+  decidedAt           DateTime?
+  createdAt           DateTime                @default(now())
 
-  @@map("verification_queue")
+  @@index([userId])
+  @@index([branchId])
+  @@index([status])
+  @@map("verification_queues")
 }
 
-// 🔔 Notifications Model
-model Notification {
-  id             String               @id @default(uuid())
-  organizationId String
-  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  branchId       String?              // Null = all branches
-  branch         Branch?              @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  
-  title          String
-  body           String
-  priority       NotificationPriority @default(MEDIUM)
-  imageUrl       String?
-  
-  createdById    String
-  createdBy      User                 @relation(fields: [createdById], references: [id], onDelete: Cascade)
-  
-  reads          NotificationRead[]
+// ======================================================
+// LEAVE POLICY
+// ======================================================
 
-  createdAt      DateTime             @default(now())
-  updatedAt      DateTime             @updatedAt
-
-  @@map("notifications")
-}
-
-// 📖 Notification Read Status
-model NotificationRead {
+model LeavePolicy {
   id             String       @id @default(uuid())
-  notificationId String
-  notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
-  userId         String
-  readAt         DateTime     @default(now())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  leaveType      LeaveType
+  allowedDays    Int
+  carryForward   Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
-  @@unique([notificationId, userId])
-  @@map("notification_reads")
+  balances LeaveBalance[]
+
+  @@unique([organizationId, leaveType])
+  @@map("leave_policies")
 }
 
-// 🛠️ Audit Logs
+// ======================================================
+// LEAVE BALANCE
+// ======================================================
+
+model LeaveBalance {
+  id            String      @id @default(uuid())
+  userId        String
+  user          User        @relation("LeaveBalanceUser", fields: [userId], references: [id], onDelete: Cascade)
+  leavePolicyId String
+  leavePolicy   LeavePolicy @relation(fields: [leavePolicyId], references: [id], onDelete: Cascade)
+  totalDays     Float
+  usedDays      Float       @default(0)
+  remainingDays Float
+  year          Int
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@unique([userId, leavePolicyId, year])
+  @@map("leave_balances")
+}
+
+// ======================================================
+// LEAVE REQUEST
+// ======================================================
+
+model LeaveRequest {
+  id              String        @id @default(uuid())
+  userId          String
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  leaveType       LeaveType
+  duration        LeaveDuration @default(FULL_DAY)
+  startDate       DateTime
+  endDate         DateTime
+  totalDays       Float
+  reason          String
+  attachment      String?
+  status          LeaveStatus   @default(PENDING)
+  approvedById    String?
+  approvedBy      User?         @relation("LeaveApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  approvedAt      DateTime?
+  rejectionReason String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@map("leave_requests")
+}
+
+// ======================================================
+// SHIFT
+// ======================================================
+
+model Shift {
+  id                   String       @id @default(uuid())
+  organizationId       String
+  organization         Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name                 String
+  type                 ShiftType    @default(FIXED)
+  startTime            String
+  endTime              String
+  breakMinutes         Int          @default(60)
+  workingHours         Float        @default(8)
+  lateAfterMinutes     Int          @default(15)
+  overtimeAfterMinutes Int          @default(480)
+  isActive             Boolean      @default(true)
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+
+  assignments EmployeeShift[]
+
+  @@unique([organizationId, name])
+  @@map("shifts")
+}
+
+// ======================================================
+// EMPLOYEE SHIFT
+// ======================================================
+
+model EmployeeShift {
+  id            String    @id @default(uuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shiftId       String
+  shift         Shift     @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@map("employee_shifts")
+}
+
+// ======================================================
+// HOLIDAY
+// ======================================================
+
+model Holiday {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  title          String
+  description    String?
+  holidayDate    DateTime     @db.Date
+  isRecurring    Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+
+  @@unique([organizationId, holidayDate])
+  @@map("holidays")
+}
+
+// ======================================================
+// SALARY STRUCTURE
+// ======================================================
+
+model SalaryStructure {
+  id                        String   @id @default(uuid())
+  userId                    String   @unique
+  user                      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  basicSalary               Float
+  houseRent                 Float    @default(0)
+  medicalAllowance          Float    @default(0)
+  transportAllowance        Float    @default(0)
+  foodAllowance             Float    @default(0)
+  otherAllowance            Float    @default(0)
+  overtimeRate              Float    @default(0)
+  taxPercentage             Float    @default(0)
+  providentFundPercentage   Float    @default(0)
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  @@map("salary_structures")
+}
+
+// ======================================================
+// PAYROLL
+// ======================================================
+
+model Payroll {
+  id              String        @id @default(uuid())
+  userId          String
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  month           Int
+  year            Int
+  workingDays     Int
+  presentDays     Int
+  absentDays      Int
+  leaveDays       Int
+  overtimeMinutes Int           @default(0)
+  grossSalary     Float
+  totalAllowance  Float
+  totalDeduction  Float
+  netSalary       Float
+  status          PayrollStatus @default(DRAFT)
+  generatedAt     DateTime?
+  paidAt          DateTime?
+  createdAt       DateTime      @default(now())
+
+  payslip Payslip?
+
+  @@unique([userId, month, year])
+  @@map("payrolls")
+}
+
+// ======================================================
+// PAYSLIP
+// ======================================================
+
+model Payslip {
+  id          String   @id @default(uuid())
+  payrollId   String   @unique
+  payroll     Payroll  @relation(fields: [payrollId], references: [id], onDelete: Cascade)
+  pdfUrl      String?
+  generatedAt DateTime @default(now())
+
+  @@map("payslips")
+}
+
+// ======================================================
+// COMPANY ANNOUNCEMENTS
+// ======================================================
+
+model Announcement {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  title          String
+  description    String
+  publishAt      DateTime     @default(now())
+  expireAt       DateTime?
+  createdById    String
+  createdBy      User         @relation("AnnouncementCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@map("announcements")
+}
+
+// ======================================================
+// REPORTS
+// ======================================================
+
+model Report {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  type           ReportType
+  title          String
+  fileUrl        String?
+  generatedById  String
+  generatedBy    User         @relation("ReportGenerator", fields: [generatedById], references: [id], onDelete: Cascade)
+  generatedAt    DateTime     @default(now())
+
+  @@map("reports")
+}
+
+// ======================================================
+// DASHBOARD ANALYTICS
+// ======================================================
+
+model DashboardAnalytics {
+  id                 String       @id @default(uuid())
+  organizationId     String       @unique
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  totalEmployees     Int          @default(0)
+  activeEmployees    Int          @default(0)
+  totalBranches      Int          @default(0)
+  todayPresent       Int          @default(0)
+  todayAbsent        Int          @default(0)
+  todayLate          Int          @default(0)
+  todayOnLeave       Int          @default(0)
+  averageAttendance  Float        @default(0)
+  updatedAt          DateTime     @updatedAt
+
+  @@map("dashboard_analytics")
+}
+
+// ======================================================
+// EMPLOYEE PERFORMANCE
+// ======================================================
+
+model EmployeePerformance {
+  id               String           @id @default(uuid())
+  userId           String
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  month            Int
+  year             Int
+  attendanceScore  Float            @default(0)
+  punctualityScore Float            @default(0)
+  overtimeScore    Float            @default(0)
+  overallScore     Float            @default(0)
+  performanceLevel PerformanceLevel
+  remarks          String?
+  createdAt        DateTime         @default(now())
+
+  @@unique([userId, month, year])
+  @@map("employee_performances")
+}
+model Kpi {
+  id           String       @id @default(uuid())
+  userId       String
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title        String
+  description  String?      @db.Text
+  targetValue  Float        @default(0)
+  currentValue Float        @default(0)
+  weight       Float        @default(1.0)
+  status       String       @default("IN_PROGRESS") // IN_PROGRESS, COMPLETED, etc.
+  dueDate      DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@index([userId])
+  @@map("kpis")
+}
+
+// ৩. পারফরম্যান্স রিভিউ মডেল
+model PerformanceReview {
+  id           String       @id @default(uuid())
+  userId       String
+  user         User         @relation("EmployeeReviews", fields: [userId], references: [id], onDelete: Cascade)
+  reviewerId   String
+  reviewer     User         @relation("ReviewerReviews", fields: [reviewerId], references: [id], onDelete: Cascade)
+  reviewPeriod String
+  ratings      Float        @default(0)
+  feedback     String?      @db.Text
+  goals        String?      @db.Text
+  status       String       @default("DRAFT") // DRAFT, PUBLISHED, etc.
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@index([userId])
+  @@index([reviewerId])
+  @@map("performance_reviews")
+}
+
+// ======================================================
+// ACTIVITY TIMELINE
+// ======================================================
+
+model ActivityTimeline {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@map("activity_timelines")
+}
+
+// ======================================================
+// AUDIT LOG
+// ======================================================
+
 model AuditLog {
-  id         String   @id @default(uuid())
-  actorId    String
-  actor      User     @relation(fields: [actorId], references: [id], onDelete: Cascade)
-  action     String
+  id         String      @id @default(uuid())
+  userId     String
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  action     AuditAction
   entityType String
   entityId   String
-  metadata   Json?
-  createdAt  DateTime @default(now())
+  oldValues  Json?
+  newValues  Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime    @default(now())
 
+  @@index([userId])
+  @@index([action])
   @@map("audit_logs")
+}
+
+// ======================================================
+// SYSTEM SETTINGS
+// ======================================================
+
+model SystemSetting {
+  id                    String       @id @default(uuid())
+  organizationId        String       @unique
+  organization          Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  allowFaceVerification Boolean      @default(true)
+  allowGeoVerification  Boolean      @default(true)
+  allowManualAttendance Boolean      @default(false)
+  allowOvertime         Boolean      @default(true)
+  allowNotifications    Boolean      @default(true)
+  attendanceGracePeriod Int          @default(15)
+  updatedAt             DateTime     @updatedAt
+
+  @@map("system_settings")
+}
+
+// ======================================================
+// ROLE PERMISSIONS (RBAC)
+// ======================================================
+
+model Permission {
+  id              String           @id @default(uuid())
+  name            String           @unique
+  description     String?
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  id           String     @id @default(uuid())
+  role         Role
+  permissionId String
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([role, permissionId])
+  @@map("role_permissions")
 }

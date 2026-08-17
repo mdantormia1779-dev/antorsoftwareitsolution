@@ -1,6 +1,8 @@
 'use client';
 
-import React, { useState, useTransition, useEffect } from 'react';
+import React, { useState, useEffect, useTransition } from 'react';
+import { Plus, Loader2 } from 'lucide-react';
+
 import EmployeeHeader from '../Components/Employee/EmployeeHeader';
 import EmployeeFilters from '../Components/Employee/EmployeeFilters';
 import EmployeeTable from '../Components/Employee/EmployeeTable';
@@ -12,85 +14,192 @@ import DeleteEmployeeModal from '../Components/Employee/DeleteEmployeeModal';
 
 const ITEMS_PER_PAGE = 10;
 
-const Employees = ({ initialEmployees = [], initialBranches = [], initialOrganizations = [] }) => {
-  const [employees, setEmployees] = useState(initialEmployees);
-  const [branches, setBranches] = useState(initialBranches);
-  const [organizations, setOrganizations] = useState(initialOrganizations);
-  const [loading, setLoading] = useState(false);
+const Employees = () => {
+  const [employees, setEmployees] = useState([]);
+  const [branches, setBranches] = useState([]);
+  const [organizations, setOrganizations] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [isPending, startTransition] = useTransition();
+
+  // Filter & Pagination States
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedBranch, setSelectedBranch] = useState('All');
   const [selectedStatus, setSelectedStatus] = useState('All');
   const [sortBy, setSortBy] = useState('Name');
   const [currentPage, setCurrentPage] = useState(1);
-  const [isPending, startTransition] = useTransition();
 
   // Modals States
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedDetailsEmployee, setSelectedDetailsEmployee] = useState(null);
-  const [selectedEditEmployee, setSelectedEditEmployee] = useState(null);
-  const [selectedDeleteEmployee, setSelectedDeleteEmployee] = useState(null);
+  const [editingEmployee, setEditingEmployee] = useState(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [deletingEmployee, setDeletingEmployee] = useState(null);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
-  // 🔄 ডাটা ফেচ করা (অর্গানাইজেশন, ব্রাঞ্চ এবং এমপ্লয়ি)
-  const fetchEmployees = async () => {
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api/v1";
+
+  const getAuthHeaders = () => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+    return {
+      "Content-Type": "application/json",
+      ...(token ? { "Authorization": `Bearer ${token}` } : {})
+    };
+  };
+
+  // 🔄 ডাটা ফেচ করা (Employees, Branches, Organizations)
+  const fetchEmployeesData = async () => {
     try {
       setLoading(true);
       const [empRes, branchRes, orgRes] = await Promise.all([
-        fetch('/api/employees').then(res => res.json()).catch(() => null),
-        fetch('/api/branches').then(res => res.json()).catch(() => null),
-        fetch('/api/organizations').then(res => res.json()).catch(() => null)
+        fetch(`${apiUrl}/users`, { method: "GET", credentials: "include", headers: getAuthHeaders() }),
+        fetch(`${apiUrl}/branches`, { method: "GET", credentials: "include", headers: getAuthHeaders() }),
+        fetch(`${apiUrl}/organizations`, { method: "GET", credentials: "include", headers: getAuthHeaders() })
       ]);
 
-      if (empRes?.success && empRes?.data) setEmployees(empRes.data);
-      if (branchRes?.success && branchRes?.data) setBranches(branchRes.data);
-      if (orgRes?.success && orgRes?.data) setOrganizations(orgRes.data);
+      const empData = await empRes.json();
+      const branchData = await branchRes.json();
+      const orgData = await orgRes.json();
+
+      if (empRes.ok) setEmployees(empData.data || empData || []);
+      if (branchRes.ok) setBranches(branchData.data || branchData || []);
+      if (orgRes.ok) setOrganizations(orgData.data || orgData || []);
     } catch (error) {
-      console.error("Failed to fetch data:", error);
+      console.error("Error fetching employee data:", error);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (employees.length === 0 || branches.length === 0 || organizations.length === 0) {
-      fetchEmployees();
-    }
+    fetchEmployeesData();
   }, []);
 
-  // ➕ Add Employee API Call Handler
-  const handleAddEmployee = async (newEmployeeData) => {
-    try {
-      const response = await fetch('/api/employees', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newEmployeeData),
+  // ➕ Add Employee Handler
+  const handleCreateEmployee = async (organizationId, newEmployeeData) => {
+    return new Promise((resolve) => {
+      startTransition(async () => {
+        try {
+          const payload = {
+            organizationId,
+            fullName: newEmployeeData.fullName,
+            email: newEmployeeData.email,
+            phone: newEmployeeData.phone || null,
+            employeeId: newEmployeeData.employeeId,
+            password: newEmployeeData.password || undefined,
+            role: newEmployeeData.role || 'EMPLOYEE',
+            branchId: newEmployeeData.branchId || null,
+            departmentId: newEmployeeData.departmentId || null,
+            designationId: newEmployeeData.designationId || null,
+          };
+
+          const res = await fetch(`${apiUrl}/users`, {
+            method: "POST",
+            credentials: "include",
+            headers: getAuthHeaders(),
+            body: JSON.stringify(payload),
+          });
+
+          const result = await res.json();
+
+          if (res.ok) {
+            setEmployees((prev) => [result.data || result, ...prev]);
+            setIsAddModalOpen(false);
+            resolve({ success: true });
+          } else {
+            resolve({ success: false, error: result.message || result.error || 'Failed to create employee' });
+          }
+        } catch (error) {
+          console.error("Error creating employee:", error);
+          resolve({ success: false, error: 'An unexpected error occurred.' });
+        }
       });
+    });
+  };
 
-      const result = await response.json();
+  // ✏️ Edit Click Handler
+  const handleEditClick = (employee) => {
+    setEditingEmployee(employee);
+    setIsEditModalOpen(true);
+  };
 
-      if (result?.success && result?.data) {
-        setEmployees((prev) => [result.data, ...prev]);
-        setIsAddModalOpen(false);
-      } else {
-        alert(result?.error || result?.message || 'Failed to add employee');
-      }
-    } catch (err) {
-      console.error("Add error:", err);
-      alert('Something went wrong while adding employee.');
-    }
+  // 💾 Save Edited Employee Handler
+  const handleSaveEmployee = async (id, updatedData) => {
+    return new Promise((resolve) => {
+      startTransition(async () => {
+        try {
+          const res = await fetch(`${apiUrl}/users/${id}`, {
+            method: "PATCH",
+            credentials: "include",
+            headers: getAuthHeaders(),
+            body: JSON.stringify(updatedData),
+          });
+
+          const result = await res.json();
+
+          if (res.ok) {
+            const updatedItem = result.data || result;
+            setEmployees((prev) =>
+              prev.map((item) => (item.id === id || item._id === id ? updatedItem : item))
+            );
+            setIsEditModalOpen(false);
+            resolve({ success: true });
+          } else {
+            resolve({ success: false, error: result.message || result.error || 'Failed to update employee' });
+          }
+        } catch (error) {
+          console.error("Error updating employee:", error);
+          resolve({ success: false, error: 'An error occurred while updating the employee.' });
+        }
+      });
+    });
+  };
+
+  // 🗑️ Delete Click Handler
+  const handleDeleteClick = (employee) => {
+    setDeletingEmployee(employee);
+    setIsDeleteModalOpen(true);
+  };
+
+  // ❌ Confirm Delete Handler
+  const handleConfirmDelete = async (id) => {
+    return new Promise((resolve) => {
+      startTransition(async () => {
+        try {
+          const res = await fetch(`${apiUrl}/users/${id}`, {
+            method: "DELETE",
+            credentials: "include",
+            headers: getAuthHeaders(),
+          });
+
+          const result = await res.json();
+
+          if (res.ok) {
+            setEmployees((prev) => prev.filter((item) => item.id !== id && item._id !== id));
+            setIsDeleteModalOpen(false);
+            resolve({ success: true });
+          } else {
+            resolve({ success: false, error: result.message || result.error || 'Failed to delete employee' });
+          }
+        } catch (error) {
+          console.error("Error deleting employee:", error);
+          resolve({ success: false, error: 'An error occurred while deleting the employee.' });
+        }
+      });
+    });
   };
 
   // 🔍 Filter & Sort Logic
   const filteredEmployees = employees
     .filter((emp) => {
-      const name = emp.name || emp.fullName || '';
-      const empCode = emp.empCode || '';
+      const name = emp.fullName || emp.name || '';
+      const empCode = emp.employeeId || emp.empCode || '';
 
       const matchesSearch =
         name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         empCode.toLowerCase().includes(searchQuery.toLowerCase());
 
       const matchesBranch =
-        selectedBranch === 'All' || emp.branch === selectedBranch || emp.branchId === selectedBranch;
+        selectedBranch === 'All' || emp.branch?.name === selectedBranch || emp.branchId === selectedBranch;
 
       const matchesStatus =
         selectedStatus === 'All' ||
@@ -101,12 +210,12 @@ const Employees = ({ initialEmployees = [], initialBranches = [], initialOrganiz
     })
     .sort((a, b) => {
       if (sortBy === 'Name') {
-        const nameA = a.name || a.fullName || '';
-        const nameB = b.name || b.fullName || '';
+        const nameA = a.fullName || a.name || '';
+        const nameB = b.fullName || b.name || '';
         return nameA.localeCompare(nameB);
       }
       if (sortBy === 'Department') {
-        return (a.department || '').localeCompare(b.department || '');
+        return (a.department?.name || a.department || '').localeCompare(b.department?.name || b.department || '');
       }
       return 0;
     });
@@ -116,151 +225,84 @@ const Employees = ({ initialEmployees = [], initialBranches = [], initialOrganiz
   const paginatedEmployees = filteredEmployees.slice(startIndex, startIndex + ITEMS_PER_PAGE);
 
   return (
-    <div className="w-full max-w-7xl mx-auto p-4 sm:p-6 space-y-6">
+    <div className="bg-white rounded-2xl border border-slate-100 p-6 shadow-2xs w-full max-w-7xl mx-auto space-y-6 relative">
+      
+      {(loading || isPending) && (
+        <div className="absolute inset-0 bg-white/40 backdrop-blur-[1px] z-20 flex items-center justify-center rounded-2xl min-h-[200px]">
+          <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 bg-white px-4 py-2 rounded-full shadow-md border border-slate-100">
+            <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+            Connecting to database...
+          </div>
+        </div>
+      )}
+
       <EmployeeHeader
         totalShown={filteredEmployees.length}
         onAddClick={() => setIsAddModalOpen(true)}
       />
 
-      <div className="bg-white rounded-2xl border border-slate-100 p-5 sm:p-6 shadow-2xs relative">
-        {(isPending || loading) && (
-          <div className="absolute inset-0 bg-white/50 backdrop-blur-[1px] z-10 flex items-center justify-center rounded-2xl pointer-events-none">
-            <span className="text-xs font-semibold text-slate-500 bg-white px-3 py-1.5 rounded-full shadow-sm border border-slate-100">
-              Loading data...
-            </span>
-          </div>
-        )}
+      <EmployeeFilters
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
+        selectedBranch={selectedBranch}
+        setSelectedBranch={setSelectedBranch}
+        selectedStatus={selectedStatus}
+        setSelectedStatus={setSelectedStatus}
+        sortBy={sortBy}
+        setSortBy={setSortBy}
+      />
 
-        <EmployeeFilters
-          searchQuery={searchQuery}
-          setSearchQuery={setSearchQuery}
-          selectedBranch={selectedBranch}
-          setSelectedBranch={setSelectedBranch}
-          selectedStatus={selectedStatus}
-          setSelectedStatus={setSelectedStatus}
-          sortBy={sortBy}
-          setSortBy={setSortBy}
-        />
+      <EmployeeTable
+        employees={paginatedEmployees}
+        onViewDetails={(emp) => setSelectedDetailsEmployee(emp)}
+        onEdit={handleEditClick}
+        onDelete={handleDeleteClick}
+      />
 
-        <EmployeeTable
-          employees={paginatedEmployees}
-          onViewDetails={(emp) => setSelectedDetailsEmployee(emp)}
-          onEdit={(emp) => setSelectedEditEmployee(emp)}
-          onDelete={(emp) => setSelectedDeleteEmployee(emp)}
-        />
-
-        <EmployeePagination
-          currentPage={currentPage}
-          totalPages={totalPages}
-          onPageChange={(page) => setCurrentPage(page)}
-        />
-      </div>
+      <EmployeePagination
+        currentPage={currentPage}
+        totalPages={totalPages}
+        onPageChange={(page) => setCurrentPage(page)}
+      />
 
       {/* Modals */}
       <AddEmployeeModal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
-        onEmployeeCreated={handleAddEmployee}
+        onEmployeeCreated={handleCreateEmployee}
         branches={branches}
-        organizations={organizations} 
+        organizations={organizations}
+        defaultOrgId={
+          organizations.length > 0 
+            ? (organizations[0].id || organizations[0]._id || '') 
+            : ''
+        }
       />
 
       <EmployeeDetailsModal
         isOpen={!!selectedDetailsEmployee}
         employee={selectedDetailsEmployee}
         onClose={() => setSelectedDetailsEmployee(null)}
-        onEdit={(emp) => {
-          setSelectedEditEmployee(emp); // এডিট মোডাল ওপেন করবে
-        }}
-        onToggleStatus={async (employeeId) => {
-          // স্ট্যাটাস পরিবর্তন করার লজিক (Active / Inactive)
-          const emp = employees.find(e => e.id === employeeId || e._id === employeeId);
-          if (!emp) return;
-          const newStatus = emp.status === 'Active' ? 'Inactive' : 'Active';
-          
-          try {
-            const response = await fetch('/api/employees', {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ ...emp, status: newStatus }),
-            });
-            const result = await response.json();
-            if (response.ok && result?.success) {
-              setEmployees((prev) =>
-                prev.map((item) => (item.id === employeeId || item._id === employeeId ? result.data : item))
-              );
-              setSelectedDetailsEmployee(result.data); // মডালের ভিতরের স্ট্যাটাস আপডেট করার জন্য
-            } else {
-              alert(result?.message || 'Failed to update status');
-            }
-          } catch (err) {
-            console.error('Status toggle error:', err);
-          }
-        }}
-        onDelete={(emp) => {
-          setSelectedDeleteEmployee(emp); // ডিলিট কনফার্মেশন মোডাল ওপেন করবে
-        }}
+        onEdit={(emp) => handleEditClick(emp)}
+        onDelete={(emp) => handleDeleteClick(emp)}
       />
 
       <EditEmployeeModal
-        isOpen={!!selectedEditEmployee}
-        onClose={() => setSelectedEditEmployee(null)}
-        employee={selectedEditEmployee}
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        employee={editingEmployee}
         branches={branches}
-        // Employees.jsx এর ভেতর EditEmployeeModal এর onSave:
-        onSave={async (updatedEmployeeData) => {
-          try {
-            const response = await fetch('/api/employees', { // [id] ছাড়া শুধু /api/employees
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(updatedEmployeeData), // এখানে body-তেই id যাচ্ছে
-            });
-            
-            const result = await response.json();
-        
-            if (response.ok && result?.success) {
-              // লোকাল স্টেট আপডেট
-              setEmployees((prev) =>
-                prev.map((emp) => (emp.id === updatedEmployeeData.id ? result.data : emp))
-              );
-              setSelectedEditEmployee(null);
-              // fetchEmployees(); // প্রয়োজনে আবার ডাটা লোড করা
-            } else {
-              alert(result?.message || 'Failed to update employee');
-            }
-          } catch (err) {
-            console.error('Update error:', err);
-          }
-        }}
+        organizations={organizations}
+        onSave={handleSaveEmployee}
       />
 
       <DeleteEmployeeModal
-        isOpen={!!selectedDeleteEmployee}
-        employee={selectedDeleteEmployee}
-        onClose={() => setSelectedDeleteEmployee(null)}
-        onDeleteConfirm={async (employeeId) => {
-          try {
-            const response = await fetch('/api/employees', {
-              method: 'DELETE',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ id: employeeId }),
-            });
-
-            const result = await response.json();
-
-            if (response.ok && result?.success) {
-              // লোকাল স্টেট থেকে ডিলিট হওয়া এমপ্লয়ি ফিল্টার করে বাদ দেওয়া
-              setEmployees((prev) => prev.filter((emp) => emp.id !== employeeId && emp._id !== employeeId));
-              setSelectedDeleteEmployee(null);
-            } else {
-              alert(result?.message || result?.error || 'Failed to delete employee');
-            }
-          } catch (err) {
-            console.error('Delete error:', err);
-            alert('Something went wrong while deleting employee.');
-          }
-        }}
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        employee={deletingEmployee}
+        onConfirm={handleConfirmDelete}
       />
+
     </div>
   );
 };

@@ -1,78 +1,102 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Plus, X, Clock, Loader2 } from 'lucide-react';
-import { getManagersAction } from '@/app/actions/branch';
-
-const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+import { Plus, X, Loader2 } from 'lucide-react';
 
 const CreateBranchModal = ({ isOpen, onClose, onCreate, organizations = [], initialOrgId = '' }) => {
-  const initialFormState = {
+  const [formData, setFormData] = useState({
     name: '',
     address: '',
     managerId: '', 
-    organizationId: initialOrgId || '',
+    organizationId: '',
     geofenceRadius: '150',
-    startTime: '09:00 AM',
-    endTime: '06:00 PM',
-    weeklyHolidays: ['Sat', 'Sun'],
-  };
+    phone: '+8801800000000',
+  });
 
-  const [formData, setFormData] = useState(initialFormState);
   const [managers, setManagers] = useState([]);
   const [loadingManagers, setLoadingManagers] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
-  // মোডাল ওপেন হলে অর্গানাইজেশন এবং ম্যানেজার লিস্ট সেট করা
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api/v1";
+
+  const getAuthHeaders = () => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+    return {
+      "Content-Type": "application/json",
+      ...(token ? { "Authorization": `Bearer ${token}` } : {})
+    };
+  };
+
   useEffect(() => {
+    let isMounted = true;
+
     if (isOpen) {
+      const defaultOrgId = initialOrgId || (organizations.length > 0 ? organizations[0].id : '');
+      
       setFormData({
         name: '',
         address: '',
-        managerId: '',
-        organizationId: initialOrgId || (organizations.length > 0 ? organizations[0].id : ''),
+        managerId: '', 
+        organizationId: defaultOrgId,
         geofenceRadius: '150',
-        startTime: '09:00 AM',
-        endTime: '06:00 PM',
-        weeklyHolidays: ['Sat', 'Sun'],
+        phone: '+8801800000000',
       });
+      setErrorMessage('');
       
-      async function fetchManagers() {
+      async function fetchAvailableManagers() {
         setLoadingManagers(true);
-        setErrorMessage('');
         try {
-          const res = await getManagersAction();
-          if (res?.success && res.data.length > 0) {
-            setManagers(res.data);
-            setFormData((prev) => ({ 
-              ...prev, 
-              managerId: prev.managerId || res.data[0].id 
-            }));
+          // এক সাথে ইউজার্স এবং ব্রাঞ্চগুলো ফেচ করা হচ্ছে যাতে কোন ম্যানেজার কোন ব্রাঞ্চে আছে তা চেক করা যায়
+          const [usersRes, branchesRes] = await Promise.all([
+            fetch(`${apiUrl}/users`, { method: "GET", credentials: "include", headers: getAuthHeaders() }),
+            fetch(`${apiUrl}/branches`, { method: "GET", credentials: "include", headers: getAuthHeaders() })
+          ]);
+
+          const usersResult = await usersRes.json();
+          const branchesResult = await branchesRes.json();
+          
+          if (!isMounted) return;
+
+          const usersList = usersResult.data || usersResult || [];
+          const branchesList = branchesResult.data || branchesResult || [];
+
+          // যেসব ইউজারের আইডি অলরেডি কোনো ব্রাঞ্চের managerId হিসেবে আছে তাদের আইডি কালেক্ট করা
+          const assignedManagerIds = new Set(
+            branchesList
+              .map((branch) => branch.managerId || branch.manager?.id)
+              .filter(Boolean)
+          );
+
+          // শুধু ম্যানেজার রোল ফিল্টার করা এবং যারা অলরেডি অ্যাসাইনড তাদের বাদ দেওয়া
+          const availableManagers = usersList.filter((user) => {
+            const isManager = user.role && user.role.toUpperCase() === 'MANAGER';
+            const isNotAssigned = !assignedManagerIds.has(user.id);
+            return isManager && isNotAssigned;
+          });
+
+          if (usersRes.ok) {
+            setManagers(availableManagers);
+          } else {
+            setManagers([]);
           }
         } catch (err) {
-          console.error('Failed to fetch managers:', err);
+          console.error('Failed to fetch managers or branches:', err);
         } finally {
-          setLoadingManagers(false);
+          if (isMounted) {
+            setLoadingManagers(false);
+          }
         }
       }
-      fetchManagers();
+      fetchAvailableManagers();
     }
-  }, [isOpen, initialOrgId, organizations]);
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isOpen, initialOrgId, organizations, apiUrl]);
 
   if (!isOpen) return null;
-
-  const toggleHoliday = (day) => {
-    setFormData((prev) => {
-      const isSelected = prev.weeklyHolidays.includes(day);
-      return {
-        ...prev,
-        weeklyHolidays: isSelected
-          ? prev.weeklyHolidays.filter((d) => d !== day)
-          : [...prev.weeklyHolidays, day],
-      };
-    });
-  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -89,25 +113,20 @@ const CreateBranchModal = ({ isOpen, onClose, onCreate, organizations = [], init
       const payload = {
         name: formData.name,
         address: formData.address,
-        organizationId: formData.organizationId,
-        managerId: formData.managerId || null,
-        geofenceRadius: parseInt(formData.geofenceRadius, 10) || 150,
         latitude: 23.7937,
         longitude: 90.4066,
-        startTime: formData.startTime,
-        endTime: formData.endTime,
-        weeklyHolidays: formData.weeklyHolidays,
+        geofenceRadius: parseInt(formData.geofenceRadius, 10) || 150,
+        phone: formData.phone || "+8801800000000",
+        managerId: formData.managerId ? formData.managerId : null,
+        organizationId: formData.organizationId,
       };
 
-      console.log("Sending Payload to API:", payload);
-
       if (onCreate) {
-        // Parent থেকে আসা handleCreateBranch ফাংশন কল করা (যা API এ POST করবে)
         const result = await onCreate(payload); 
-        console.log("Server Response:", result);
 
         if (result && result.success === false) {
           setErrorMessage(result.error || 'Failed to create branch.');
+          setIsSubmitting(false);
           return;
         }
       }
@@ -144,7 +163,6 @@ const CreateBranchModal = ({ isOpen, onClose, onCreate, organizations = [], init
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
           
-          {/* Error Banner */}
           {errorMessage && (
             <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-600 text-xs font-medium">
               {errorMessage}
@@ -180,7 +198,7 @@ const CreateBranchModal = ({ isOpen, onClose, onCreate, organizations = [], init
               <input
                 type="text"
                 required
-                placeholder="e.g. Northgate Office"
+                placeholder="e.g. Headquarters - Dhaka"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm text-slate-800 font-medium focus:outline-none focus:border-indigo-500 bg-slate-50/50"
@@ -194,7 +212,7 @@ const CreateBranchModal = ({ isOpen, onClose, onCreate, organizations = [], init
               <input
                 type="text"
                 required
-                placeholder="Street, city, state"
+                placeholder="e.g. Banani, Dhaka"
                 value={formData.address}
                 onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                 className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm text-slate-800 font-medium focus:outline-none focus:border-indigo-500 bg-slate-50/50"
@@ -206,7 +224,7 @@ const CreateBranchModal = ({ isOpen, onClose, onCreate, organizations = [], init
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-                Manager <span className="text-rose-500">*</span>
+                Manager
               </label>
               <select
                 value={formData.managerId}
@@ -214,8 +232,9 @@ const CreateBranchModal = ({ isOpen, onClose, onCreate, organizations = [], init
                 disabled={loadingManagers}
                 className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm text-slate-800 font-medium focus:outline-none focus:border-indigo-500 bg-slate-50/50 cursor-pointer disabled:opacity-50"
               >
+                <option value="">Select Manager (Optional)</option>
                 {loadingManagers ? (
-                  <option value="">Loading managers...</option>
+                  <option value="" disabled>Loading managers...</option>
                 ) : managers.length > 0 ? (
                   managers.map((m) => (
                     <option key={m.id} value={m.id}>
@@ -223,7 +242,7 @@ const CreateBranchModal = ({ isOpen, onClose, onCreate, organizations = [], init
                     </option>
                   ))
                 ) : (
-                  <option value="">No managers found (Unassigned)</option>
+                  <option value="" disabled>No available managers found</option>
                 )}
               </select>
             </div>
@@ -242,57 +261,16 @@ const CreateBranchModal = ({ isOpen, onClose, onCreate, organizations = [], init
             </div>
           </div>
 
-          {/* Shift Times */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1.5">Duty start time</label>
-              <div className="relative">
-                <input
-                  type="text"
-                  value={formData.startTime}
-                  onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm text-slate-800 font-medium focus:outline-none focus:border-indigo-500 bg-slate-50/50 pr-10"
-                />
-                <Clock className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1.5">Duty end time</label>
-              <div className="relative">
-                <input
-                  type="text"
-                  value={formData.endTime}
-                  onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm text-slate-800 font-medium focus:outline-none focus:border-indigo-500 bg-slate-50/50 pr-10"
-                />
-                <Clock className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-              </div>
-            </div>
-          </div>
-
-          {/* Weekly Holidays */}
+          {/* Phone Field */}
           <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-2">Weekly holidays</label>
-            <div className="flex flex-wrap gap-2">
-              {DAYS.map((day) => {
-                const isSelected = formData.weeklyHolidays.includes(day);
-                return (
-                  <button
-                    key={day}
-                    type="button"
-                    onClick={() => toggleHoliday(day)}
-                    className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer border ${
-                      isSelected
-                        ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
-                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-                    }`}
-                  >
-                    {day}
-                  </button>
-                );
-              })}
-            </div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Phone</label>
+            <input
+              type="text"
+              placeholder="+8801800000000"
+              value={formData.phone}
+              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm text-slate-800 font-medium focus:outline-none focus:border-indigo-500 bg-slate-50/50"
+            />
           </div>
 
           {/* Actions */}

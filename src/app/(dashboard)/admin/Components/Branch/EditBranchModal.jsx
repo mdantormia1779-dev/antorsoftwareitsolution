@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 import { Pencil, X, Clock, Loader2 } from 'lucide-react';
-import { getManagersAction } from '@/app/actions/branch'; // ম্যানেজারদের ডাটাবেজ থেকে ফেচ করার জন্য
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -10,24 +9,36 @@ const EditBranchModal = ({ isOpen, onClose, branch, onSave }) => {
   const [managers, setManagers] = useState([]);
   const [loadingManagers, setLoadingManagers] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   const [formData, setFormData] = useState({
     name: '',
     address: '',
-    managerId: '', // manager পরিবর্তন করে managerId করা হলো
+    managerId: '',
     geofenceRadius: '150',
     startTime: '09:00 AM',
     endTime: '06:00 PM',
     weeklyHolidays: ['Sat', 'Sun'],
   });
 
-  // ১. মোডাল ওপেন হলে কারেন্ট ব্রাঞ্চের তথ্য ফর্মে সেট করা
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api/v1";
+
+  // হেল্পার ফাংশন: টোকেন রিট্রিভ করার জন্য
+  const getAuthHeaders = () => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+    return {
+      "Content-Type": "application/json",
+      ...(token ? { "Authorization": `Bearer ${token}` } : {})
+    };
+  };
+
+  // ১. মোডাল ওপেন হলে বা ব্রাঞ্চ পরিবর্তন হলে কারেন্ট ব্রাঞ্চের তথ্য ফর্মে সেট করা
   useEffect(() => {
-    if (branch) {
+    if (branch && isOpen) {
       setFormData({
         name: branch.name || '',
         address: branch.address || branch.location || '',
-        managerId: branch.managerId || branch.manager?.id || '', // সঠিক ম্যানেজার আইডি বা রিলেশন আইডি ম্যাপ করা
+        managerId: branch.managerId || branch.manager?.id || '',
         geofenceRadius: branch.geofenceRadius?.toString() || '150',
         startTime: branch.startTime || '09:00 AM',
         endTime: branch.endTime || '06:00 PM',
@@ -35,23 +46,54 @@ const EditBranchModal = ({ isOpen, onClose, branch, onSave }) => {
           ? branch.weeklyHolidays 
           : ['Sat', 'Sun'],
       });
+      setErrorMessage('');
     }
-  }, [branch]);
+  }, [branch, isOpen]);
 
-  // ২. মোডাল ওপেন হলে ডাটাবেজ থেকে ম্যানেজারদের ফেচ করা
+  // ২. মোডাল ওপেন হলে API থেকে শুধুমাত্র MANAGER রোলধারী ইউজারদের ফেচ করা (মেমোরি লিক সেফটি সহ)
   useEffect(() => {
+    let isMounted = true;
+
     if (isOpen) {
       async function fetchManagers() {
         setLoadingManagers(true);
-        const res = await getManagersAction();
-        if (res?.success && res?.data) {
-          setManagers(res.data);
+        try {
+          const res = await fetch(`${apiUrl}/users`, {
+            method: "GET",
+            credentials: "include",
+            headers: getAuthHeaders(),
+          });
+          const result = await res.json();
+          
+          if (!isMounted) return;
+
+          const usersList = result.data || result || [];
+          
+          // শুধুমাত্র যাদের রোল MANAGER, তাদের ফিল্টার করে নেওয়া হচ্ছে
+          const managerList = usersList.filter(
+            (user) => user.role && user.role.toUpperCase() === 'MANAGER'
+          );
+
+          if (res.ok) {
+            setManagers(managerList);
+          } else {
+            setManagers([]);
+          }
+        } catch (err) {
+          console.error('Failed to fetch managers:', err);
+        } finally {
+          if (isMounted) {
+            setLoadingManagers(false);
+          }
         }
-        setLoadingManagers(false);
       }
       fetchManagers();
     }
-  }, [isOpen]);
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isOpen, apiUrl]);
 
   if (!isOpen || !branch) return null;
 
@@ -71,17 +113,34 @@ const EditBranchModal = ({ isOpen, onClose, branch, onSave }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
+    setErrorMessage('');
 
     try {
+      // ব্যাকএন্ডের সার্ভিস এবং স্কিমার সাথে মিলিয়ে সম্পূর্ণ পেলোড তৈরি করা হলো
       const payload = {
-        ...formData,
-        geofenceRadius: parseInt(formData.geofenceRadius, 10), // নিশ্চিত করুন এটি একটি Number
+        name: formData.name,
+        address: formData.address,
+        managerId: formData.managerId || null,
+        geofenceRadius: parseInt(formData.geofenceRadius, 10) || 150,
+        startTime: formData.startTime,
+        endTime: formData.endTime,
+        weeklyHolidays: formData.weeklyHolidays,
       };
 
-      await onSave(branch.id, payload); // ID এবং ডাটা আলাদাভাবে পাস করুন
+      if (onSave) {
+        const result = await onSave(branch.id, payload);
+
+        if (result && result.success === false) {
+          setErrorMessage(result.error || 'Failed to update branch.');
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
       onClose();
     } catch (err) {
       console.error('Error updating branch:', err);
+      setErrorMessage(err.message || 'Something went wrong. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -111,6 +170,13 @@ const EditBranchModal = ({ isOpen, onClose, branch, onSave }) => {
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
           
+          {/* Error Banner */}
+          {errorMessage && (
+            <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-600 text-xs font-medium">
+              {errorMessage}
+            </div>
+          )}
+
           {/* Row 1: Branch Name & Address */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>

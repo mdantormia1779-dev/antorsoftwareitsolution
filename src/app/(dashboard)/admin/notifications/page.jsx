@@ -1,30 +1,40 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useTransition } from 'react';
+import { Plus, Loader2 } from 'lucide-react';
+
 import NotificationHeader from '../Components/Notification/NotificationHeader';
 import NotificationItem from '../Components/Notification/NotificationItem';
 import AnnouncementModal from '../Components/Notification/AnnouncementModal';
 import DeleteConfirmModal from '../Components/Notification/DeleteConfirmModal';
 
 const Notifications = () => {
+  const [notifications, setNotifications] = useState([]);
   const [organizations, setOrganizations] = useState([]);
-  const [selectedOrgId, setSelectedOrgId] = useState('');
-  
-  // লোকাল স্টোরেজ থেকে আসা লগইন করা এডমিন আইডি
+  const [loading, setLoading] = useState(true);
+  const [isPending, startTransition] = useTransition();
+
+  // লোকাল স্টোরেজ থেকে লগইন করা ইউজারের আইডি বের করার জন্য
   const [currentUserId, setCurrentUserId] = useState('');
 
-  const [notifications, setNotifications] = useState([]);
-  const [loading, setLoading] = useState(true);
-  
-  // Modal States
   const [isAnnouncementModalOpen, setIsAnnouncementModalOpen] = useState(false);
+  const [editingNotification, setEditingNotification] = useState(null);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [selectedItem, setSelectedItem] = useState(null);
+  const [deletingNotification, setDeletingNotification] = useState(null);
 
-  // ১. লোকাল স্টোরেজ থেকে সঠিক লগইন করা এডমিনের আইডি রিড করা
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api/v1";
+
+  const getAuthHeaders = () => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+    return {
+      "Content-Type": "application/json",
+      ...(token ? { "Authorization": `Bearer ${token}` } : {})
+    };
+  };
+
+  // ১. লোকাল স্টোরেজ থেকে ইউজার বা এডমিন আইডি রিড করা
   useEffect(() => {
     try {
-      // আপনার প্রজেক্টে লোকাল স্টোরেজে যে নামগুলো ব্যবহার হতে পারে
       const keysToCheck = ['admin', 'ADMIN', 'user', 'USER', 'adminInfo', 'userInfo'];
       let foundId = '';
 
@@ -33,13 +43,11 @@ const Notifications = () => {
         if (storedData) {
           try {
             const parsed = JSON.parse(storedData);
-            // ডাটাবেজে ইউজার/এডমিন অবজেক্টে আইডি সাধারণত id বা _id নামে থাকে
             if (parsed && (parsed.id || parsed._id)) {
               foundId = parsed.id || parsed._id;
               break;
             }
           } catch {
-            // যদি অবজেক্ট না হয়ে সরাসরি স্ট্রিং আইডি বা ইমেইল থাকে
             if (typeof storedData === 'string' && storedData.trim() !== '') {
               foundId = storedData;
             }
@@ -50,204 +58,249 @@ const Notifications = () => {
       if (foundId) {
         setCurrentUserId(foundId);
       } else {
-        // যদি লোকাল স্টোরেজে কোনো আইডি না পাওয়া যায়, তবে ব্যাকআপ আইডি
         setCurrentUserId('admin-1786269776983');
       }
     } catch (error) {
-      console.error('Error reading admin from localStorage:', error);
+      console.error('Error reading user from localStorage:', error);
       setCurrentUserId('admin-1786269776983');
     }
   }, []);
 
-  // ২. প্রথমে অর্গানাইজেশন লিস্ট ফেচ করা
-  useEffect(() => {
-    fetch('/api/organizations')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success && data.data.length > 0) {
-          setOrganizations(data.data);
-          setSelectedOrgId(data.data[0].id);
-        }
-      })
-      .catch((err) => console.error('Error fetching organizations:', err));
-  }, []);
-
-  // ৩. নোটিফিকেশন ফেচ করা (GET API)
+  // ২. নোটিফিকেশন ফেচ করা
   const fetchNotifications = async () => {
-    if (!selectedOrgId) return;
     try {
       setLoading(true);
-      const res = await fetch(`/api/notifications?organizationId=${selectedOrgId}`);
-      const result = await res.json();
+      const res = await fetch(`${apiUrl}/notifications`, {
+        method: "GET",
+        credentials: "include",
+        headers: getAuthHeaders(),
+      });
+      const data = await res.json();
       
-      if (result.success) {
-        const formattedData = result.data.map((item) => ({
+      if (res.ok) {
+        const items = data.data || data || [];
+        const formattedData = items.map((item) => ({
           id: item.id,
           title: item.title,
-          message: item.body,
+          message: item.message,
+          branchId: item.branchId || '',
+          organizationId: item.organizationId || '',
           branch: item.branch ? item.branch.name : 'All branches',
           time: new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          priority: item.priority ? item.priority.charAt(0) + item.priority.slice(1).toLowerCase() : 'Low',
-          isUnread: true,
+          priority: item.priority ? item.priority.charAt(0) + item.priority.slice(1).toLowerCase() : 'Medium',
+          isUnread: !item.isRead,
           hasImage: !!item.imageUrl,
           imageUrl: item.imageUrl,
-          branchId: item.branchId,
-          organizationId: item.organizationId,
+          userId: item.userId,
         }));
         setNotifications(formattedData);
       } else {
-        setNotifications([]);
+        console.error("Failed to fetch notifications:", data.message);
       }
     } catch (error) {
-      console.error('Failed to fetch notifications:', error);
+      console.error("Error fetching notifications:", error);
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    if (selectedOrgId) {
-      fetchNotifications();
+  // ৩. অর্গানাইজেশন ফেচ করা
+  const fetchOrganizations = async () => {
+    try {
+      const res = await fetch(`${apiUrl}/organizations`, {
+        method: "GET",
+        credentials: "include",
+        headers: getAuthHeaders(),
+      });
+      const data = await res.json();
+      
+      if (res.ok) {
+        setOrganizations(data.data || data || []);
+      }
+    } catch (error) {
+      console.error("Error fetching organizations:", error);
     }
-  }, [selectedOrgId]);
+  };
+
+  useEffect(() => {
+    fetchNotifications();
+    fetchOrganizations();
+  }, []);
 
   const unreadCount = notifications.filter((n) => n.isUnread).length;
 
-  // Handlers
-  const handleOpenCreate = () => {
-    setSelectedItem(null);
-    setIsAnnouncementModalOpen(true);
+  // ৪. নোটিফিকেশন তৈরি অথবা আপডেট হ্যান্ডেল করা (Create / Update)
+  const handleSaveNotification = async (newData) => {
+    return new Promise((resolve) => {
+      startTransition(async () => {
+        try {
+          const payload = {
+            userId: newData.userId || currentUserId,
+            title: newData.title,
+            message: newData.message,
+            type: newData.type || 'SYSTEM',
+            priority: newData.priority ? newData.priority.toUpperCase() : 'MEDIUM',
+            branchId: newData.branchId || null,
+            organizationId: newData.organizationId || null,
+            actionUrl: newData.actionUrl || null,
+            imageUrl: newData.imageUrl || null,
+          };
+
+          const isEditing = !!editingNotification?.id;
+          const endpoint = isEditing 
+            ? `${apiUrl}/notifications/${editingNotification.id}` 
+            : `${apiUrl}/notifications`;
+          
+          const method = isEditing ? "PUT" : "POST";
+
+          const res = await fetch(endpoint, {
+            method: method,
+            credentials: "include",
+            headers: getAuthHeaders(),
+            body: JSON.stringify(payload),
+          });
+
+          const result = await res.json();
+
+          if (res.ok) {
+            const item = result.data || result;
+            const formattedItem = {
+              id: item.id,
+              title: item.title,
+              message: item.message,
+              branchId: item.branchId || '',
+              organizationId: item.organizationId || '',
+              branch: item.branch ? item.branch.name : 'All branches',
+              time: new Date(item.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              priority: item.priority ? item.priority.charAt(0) + item.priority.slice(1).toLowerCase() : 'Medium',
+              isUnread: !item.isRead,
+              hasImage: !!item.imageUrl,
+              imageUrl: item.imageUrl,
+              userId: item.userId,
+            };
+
+            if (isEditing) {
+              setNotifications((prev) => 
+                prev.map((n) => (n.id === formattedItem.id ? formattedItem : n))
+              );
+            } else {
+              setNotifications((prev) => [formattedItem, ...prev]);
+            }
+
+            setIsAnnouncementModalOpen(false);
+            setEditingNotification(null);
+            resolve({ success: true });
+          } else {
+            resolve({ success: false, error: result.message || 'Failed to save notification' });
+          }
+        } catch (error) {
+          console.error("Error saving notification:", error);
+          resolve({ success: false, error: 'An unexpected error occurred.' });
+        }
+      });
+    });
   };
 
   const handleOpenEdit = (item) => {
-    setSelectedItem(item);
+    setEditingNotification(item);
     setIsAnnouncementModalOpen(true);
   };
 
   const handleOpenDelete = (item) => {
-    setSelectedItem(item);
+    setDeletingNotification(item);
     setIsDeleteModalOpen(true);
   };
 
-  // ৪. Create / Edit সাবমিট হ্যান্ডলার (POST/PUT API)
-  const handleSubmitAnnouncement = async (data) => {
-    try {
-      const payload = {
-        id: selectedItem?.id, 
-        organizationId: selectedOrgId,
-        branchId: data.branchId || null,
-        title: data.title,
-        body: data.message,
-        priority: data.priority ? data.priority.toUpperCase() : 'MEDIUM',
-        createdById: currentUserId,
-      };
+  // ৫. নোটিফিকেশন ডিলিট করা (Delete)
+  const handleConfirmDelete = async (id) => {
+    return new Promise((resolve) => {
+      startTransition(async () => {
+        try {
+          const res = await fetch(`${apiUrl}/notifications/${id}`, {
+            method: "DELETE",
+            credentials: "include",
+            headers: getAuthHeaders(),
+          });
 
-      const res = await fetch('/api/notifications', {
-        method: selectedItem ? 'PUT' : 'POST', 
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+          const result = await res.json();
 
-      const result = await res.json();
-      
-      if (result.success) {
-        // ১. await ব্যবহার করুন যাতে ডাটা ফেচ শেষ হলে তবেই পরবর্তী কাজ হয়
-        await fetchNotifications(); 
-        
-        // ২. মডাল বন্ধ করার আগে ছোট ডিলে দেওয়া যেতে পারে বা নিশ্চিত করা যে স্টেট আপডেট হয়েছে
-        setIsAnnouncementModalOpen(false);
-      } else {
-        alert(result.message || 'Failed to process request');
-      }
-    } catch (error) {
-      console.error('Error submitting announcement:', error);
-      setIsAnnouncementModalOpen(false); // এরর হলেও মডাল বন্ধ হবে
-    }
-  };
-
-  // ৫. Delete হ্যান্ডলার
-  const handleDeleteConfirm = async () => {
-    if (selectedItem && selectedItem.id) {
-      try {
-        const res = await fetch(`/api/notifications/${selectedItem.id}`, {
-          method: 'DELETE',
-        });
-        const result = await res.json();
-        
-        if (result.success) {
-          setNotifications((prev) => prev.filter((n) => n.id !== selectedItem.id));
-        } else {
-          alert(result.message || 'Failed to delete');
+          if (res.ok) {
+            setNotifications((prev) => prev.filter((item) => item.id !== id));
+            setIsDeleteModalOpen(false);
+            setDeletingNotification(null);
+            resolve({ success: true });
+          } else {
+            resolve({ success: false, error: result.message || 'Failed to delete notification' });
+          }
+        } catch (error) {
+          console.error("Error deleting notification:", error);
+          resolve({ success: false, error: 'An error occurred while deleting the notification.' });
         }
-      } catch (error) {
-        console.error('Error deleting notification:', error);
-      }
-    } else {
-      console.error("Selected item ID is missing!");
-    }
-    setIsDeleteModalOpen(false);
+      });
+    });
   };
 
   return (
-    <div className="w-full max-w-7xl mx-auto p-4 sm:p-6 space-y-6">
+    <div className="bg-white rounded-2xl border border-slate-100 p-6 shadow-2xs w-full max-w-7xl mx-auto space-y-6 relative">
       
-      {/* Top Filter Section: Organization Selector */}
-      <div className="bg-white p-4 rounded-2xl shadow-xs border border-slate-100">
-        <div className="space-y-1">
-          <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Select Organization</label>
-          <select
-            value={selectedOrgId}
-            onChange={(e) => setSelectedOrgId(e.target.value)}
-            className="block w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-800 focus:outline-none focus:border-purple-500 bg-slate-50 cursor-pointer"
-          >
-            {organizations.map((org) => (
-              <option key={org.id} value={org.id}>
-                {org.name}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      {/* Header */}
-      <NotificationHeader
-        unreadCount={unreadCount}
-        onOpenCreateModal={handleOpenCreate}
-      />
-
-      {/* Loading & List */}
-      {loading ? (
-        <div className="text-center py-10 text-gray-500">Loading notifications...</div>
-      ) : notifications.length === 0 ? (
-        <div className="text-center py-10 text-gray-500">No notifications found for this organization.</div>
-      ) : (
-        <div className="space-y-4">
-          {notifications.map((item) => (
-            <NotificationItem
-              key={item.id}
-              item={item}
-              onEdit={handleOpenEdit}
-              onDelete={handleOpenDelete}
-            />
-          ))}
+      {(loading || isPending) && (
+        <div className="absolute inset-0 bg-white/40 backdrop-blur-[1px] z-20 flex items-center justify-center rounded-2xl min-h-[200px]">
+          <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 bg-white px-4 py-2 rounded-full shadow-md border border-slate-100">
+            <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+            Connecting to database...
+          </div>
         </div>
       )}
+
+      {/* Header with unread count & New button */}
+      <NotificationHeader
+        unreadCount={unreadCount}
+        onOpenCreateModal={() => {
+          setEditingNotification(null);
+          setIsAnnouncementModalOpen(true);
+        }}
+      />
+
+      {/* List */}
+      <div className="space-y-4">
+        {notifications.map((item) => (
+          <NotificationItem
+            key={item.id}
+            item={item}
+            onEdit={() => handleOpenEdit(item)}
+            onDelete={() => handleOpenDelete(item)}
+          />
+        ))}
+
+        {notifications.length === 0 && !loading && (
+          <div className="col-span-full py-12 text-center text-slate-400 bg-slate-50/50 rounded-xl border border-dashed border-slate-200 text-sm">
+            No notifications found. Click "New Announcement" to create one.
+          </div>
+        )}
+      </div>
 
       {/* Create / Edit Modal */}
       <AnnouncementModal
         isOpen={isAnnouncementModalOpen}
-        onClose={() => setIsAnnouncementModalOpen(false)}
-        onSubmit={handleSubmitAnnouncement}
-        initialData={selectedItem}
-        organizationId={selectedOrgId}
+        onClose={() => {
+          setIsAnnouncementModalOpen(false);
+          setEditingNotification(null);
+        }}
+        onSubmit={handleSaveNotification}
+        initialData={editingNotification}
+        organizations={organizations}
         currentUserId={currentUserId}
       />
 
       {/* Delete Confirmation Modal */}
       <DeleteConfirmModal
         isOpen={isDeleteModalOpen}
-        onClose={() => setIsDeleteModalOpen(false)}
-        onConfirm={handleDeleteConfirm}
+        onClose={() => {
+          setIsDeleteModalOpen(false);
+          setDeletingNotification(null);
+        }}
+        item={deletingNotification}
+        onConfirm={() => handleConfirmDelete(deletingNotification?.id)}
       />
 
     </div>

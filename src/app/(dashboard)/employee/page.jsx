@@ -5,49 +5,53 @@ import { Loader2, Clock, Calendar, ShieldCheck } from "lucide-react";
 import CheckInCard from "./Components/CheckInCard";
 
 export default function EmployeeDashboard() {
-  const [loading, setLoading] = useState(true);
   const [dashboardData, setDashboardData] = useState(null);
-  const [errorMessage, setErrorMessage] = useState("");
+  const [loading, setLoading] = useState(true);
 
+  // Simulating fake API data loading
   useEffect(() => {
-    async function fetchDashboardData() {
-      try {
-        const userStr = localStorage.getItem("user");
-        if (!userStr) {
-          setLoading(false);
-          return;
-        }
+    const timer = setTimeout(() => {
+      setDashboardData({
+        name: "Antor",
+        overtimeWeekly: "3h 45m",
+        checkInTime: "09:00 AM",
+        checkOutTime: null, // null means currently working / active
+        recentActivities: [
+          {
+            id: "1",
+            date: "Aug 15, 2026",
+            checkIn: "09:05 AM",
+            checkOut: "05:10 PM",
+            status: "PRESENT",
+          },
+          {
+            id: "2",
+            date: "Aug 14, 2026",
+            checkIn: "08:55 AM",
+            checkOut: "05:00 PM",
+            status: "PRESENT",
+          },
+          {
+            id: "3",
+            date: "Aug 13, 2026",
+            checkIn: "09:30 AM",
+            checkOut: "01:00 PM",
+            status: "LATE",
+          },
+        ],
+      });
+      setLoading(false);
+    }, 600); // 0.6s fake delay to mimic network request
 
-        const user = JSON.parse(userStr);
-        const userId = user.id || user._id;
-        if (!userId) {
-          setLoading(false);
-          return;
-        }
-
-        const response = await fetch(`/api/employee/dashboard?userId=${userId}`);
-        const data = await response.json();
-
-        if (response.ok && data.success) {
-          setDashboardData(data.data);
-        } else {
-          throw new Error(data.message || "Failed to load dashboard data");
-        }
-      } catch (error) {
-        console.error("Error fetching dashboard data:", error);
-        setErrorMessage(error.message);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchDashboardData();
+    return () => clearTimeout(timer);
   }, []);
 
+  // Show loading state while fake fetch happens
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="w-8 h-8 animate-spin text-slate-600" />
+      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+        <p className="text-sm font-medium text-slate-500">Loading your dashboard...</p>
       </div>
     );
   }
