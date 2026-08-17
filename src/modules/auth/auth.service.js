@@ -261,3 +261,63 @@ export const registerAdmin = async ({ fullName, email, password }) => {
     throw error;
   }
 };
+
+export const updateAdminProfile = async ({ id, fullName, companyName, password }) => {
+  if (!id) {
+    const error = new Error('User ID is required.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  // ১. ইউজার খুঁজে বের করা
+  const userResult = await pool.query(`SELECT * FROM "users" WHERE id = $1 LIMIT 1`, [id]);
+  const user = userResult.rows[0];
+
+  if (!user) {
+    const error = new Error('User not found.');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  // ২. পাসওয়ার্ড পরিবর্তন করা হলে তা হ্যাশ করা
+  let updatedPassword = user.password;
+  if (password && password.trim() !== '') {
+    updatedPassword = await bcrypt.hash(password, 10);
+  }
+
+  // ৩. ইউজারের ফুল নেম ও পাসওয়ার্ড আপডেট করা
+  const updatedUserQuery = await pool.query(
+    `UPDATE "users" SET "fullName" = $1, "password" = $2, "updatedAt" = NOW() WHERE id = $3 RETURNING *`,
+    [fullName, updatedPassword, user.id]
+  );
+  const updatedUser = updatedUserQuery.rows[0];
+
+  // ৪. অর্গানাইজেশনের নাম (companyName) আপডেট করা (যদি organizationId থাকে)
+  let organizationName = '';
+  if (user.organizationId) {
+    if (companyName) {
+      const orgQuery = await pool.query(
+        `UPDATE "organizations" SET name = $1, "updatedAt" = NOW() WHERE id = $2 RETURNING name`,
+        [companyName, user.organizationId]
+      );
+      organizationName = orgQuery.rows[0]?.name || '';
+    } else {
+      const orgQuery = await pool.query(
+        `SELECT name FROM "organizations" WHERE id = $1 LIMIT 1`,
+        [user.organizationId]
+      );
+      organizationName = orgQuery.rows[0]?.name || '';
+    }
+  }
+
+  const { password: _, ...userWithoutPassword } = updatedUser;
+
+  return {
+    success: true,
+    message: 'Profile updated successfully',
+    data: {
+      ...userWithoutPassword,
+      companyName: organizationName, // ফ্রন্টএন্ডের সুবিধার জন্য companyName যুক্ত করে পাঠানো হলো
+    }
+  };
+};

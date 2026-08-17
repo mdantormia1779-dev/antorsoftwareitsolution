@@ -1,4 +1,4 @@
-import { loginUser, logoutUser, requestPasswordReset, resetPasswordWithOtp, registerAdmin } from './auth.service.js';
+import { loginUser, logoutUser, requestPasswordReset, resetPasswordWithOtp, registerAdmin, updateAdminProfile} from './auth.service.js';
 
 export const login = async (req, res, next) => {
   try {
@@ -73,6 +73,22 @@ export const signup = async (req, res, next) => {
     const result = await registerAdmin({ fullName, email, password });
     
     return res.status(201).json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateProfile = async (req, res, next) => {
+  try {
+    const { id, fullName, companyName, password } = req.body;
+    
+    const result = await updateAdminProfile({ id, fullName, companyName, password });
+
+    res.status(200).json({
+      success: true,
+      message: result.message,
+      data: result.data,
+    });
   } catch (error) {
     next(error);
   }

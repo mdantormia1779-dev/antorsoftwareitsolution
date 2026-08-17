@@ -6,26 +6,33 @@ const Settings = () => {
   const [formData, setFormData] = useState({
     id: '',
     fullName: '',
-    companyName: '',
     email: '',
     password: '',
   });
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
 
-  // লগইন করার পর যদি localStorage-এ এডমিন ডাটা সেভ করা থাকে, তা লোড করা
   useEffect(() => {
-    const storedAdmin = localStorage.getItem('admin');
-    if (storedAdmin) {
-      const admin = JSON.parse(storedAdmin);
-      setFormData({
-        id: admin.id || '',
-        fullName: admin.fullName || '',
-        companyName: admin.companyName || '',
-        email: admin.email || '',
-        password: '',
-      });
-    }
+    const loadAdminData = () => {
+      const storedAdmin = localStorage.getItem('user');
+
+      if (storedAdmin) {
+        try {
+          const admin = JSON.parse(storedAdmin);
+
+          setFormData({
+            id: admin.id || admin._id || '',
+            fullName: admin.fullName || admin.name || '',
+            email: admin.email || '',
+            password: '',
+          });
+        } catch (parseErr) {
+          console.error('JSON Parse Error:', parseErr);
+        }
+      }
+    };
+
+    loadAdminData();
   }, []);
 
   const handleChange = (e) => {
@@ -38,13 +45,16 @@ const Settings = () => {
     setMessage({ type: '', text: '' });
 
     try {
-      const res = await fetch('/api/auth/update', {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || '';
+      const res = await fetch(`${apiUrl}/auth/update`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token') || ''}`
+        },
         body: JSON.stringify({
           id: formData.id,
           fullName: formData.fullName,
-          companyName: formData.companyName,
           password: formData.password ? formData.password : undefined,
         }),
       });
@@ -57,19 +67,15 @@ const Settings = () => {
 
       setMessage({ type: 'success', text: 'Settings updated successfully!' });
       
-      // লোকাল স্টোরেজ আপডেট করা
-      const existingData = JSON.parse(localStorage.getItem('admin') || '{}');
+      // LocalStorage আপডেট করা
+      const existingData = JSON.parse(localStorage.getItem('user') || '{}');
       const updatedAdmin = { 
         ...existingData, 
-        fullName: formData.fullName, 
-        companyName: formData.companyName 
+        fullName: data.data?.fullName || formData.fullName, 
       };
-      localStorage.setItem('admin', JSON.stringify(updatedAdmin));
+      localStorage.setItem('user', JSON.stringify(updatedAdmin));
 
-      // 🔴 কাস্টম ইভেন্ট ডিসপাচ করা যাতে অন্য কম্পোনেন্ট (যেমন: Header) বুঝতে পারে ডাটা চেঞ্জ হয়েছে
       window.dispatchEvent(new Event('adminUpdated'));
-
-      // পাসওয়ার্ড ফিল্ড ফাকা করে দেওয়া
       setFormData((prev) => ({ ...prev, password: '' }));
     } catch (err) {
       setMessage({ type: 'error', text: err.message });
@@ -80,7 +86,6 @@ const Settings = () => {
 
   return (
     <div className="w-full max-w-5xl mx-auto p-4 sm:p-6 space-y-6 bg-gray-900 text-white rounded-2xl border border-gray-800 shadow-xl">
-      {/* Header & Tabs */}
       <div className="border-b border-gray-800 pb-4">
         <h2 className="text-2xl font-bold text-blue-400">Admin Settings</h2>
         <p className="text-sm text-gray-400">Manage your profile details and security credentials.</p>
@@ -99,30 +104,16 @@ const Settings = () => {
       )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium mb-1">Full Name</label>
-            <input
-              type="text"
-              name="fullName"
-              value={formData.fullName}
-              onChange={handleChange}
-              required
-              className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:border-blue-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1">Company Name</label>
-            <input
-              type="text"
-              name="companyName"
-              value={formData.companyName}
-              onChange={handleChange}
-              required
-              className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:border-blue-500"
-            />
-          </div>
+        <div>
+          <label className="block text-sm font-medium mb-1">Full Name</label>
+          <input
+            type="text"
+            name="fullName"
+            value={formData.fullName}
+            onChange={handleChange}
+            required
+            className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:border-blue-500"
+          />
         </div>
 
         <div>

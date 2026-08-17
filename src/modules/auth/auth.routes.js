@@ -4,7 +4,8 @@ import {
   logout, 
   forgotPassword, 
   resetPassword, 
-  signup // 🔴 এখানে অবশ্যই signup ইম্পোর্ট থাকতে হবে
+  signup,
+  updateProfile
 } from './auth.controller.js';
 import { verifyAuth } from '../../middlewares/auth.middleware.js';
 
@@ -15,5 +16,6 @@ router.post('/login', login);
 router.post('/logout', verifyAuth, logout);
 router.post('/forgot-password', forgotPassword);
 router.post('/reset-password', resetPassword);
+router.put('/update', verifyAuth, updateProfile);
 
 export default router;

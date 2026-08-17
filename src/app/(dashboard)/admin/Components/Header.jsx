@@ -1,14 +1,41 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Sun } from 'lucide-react';
 
 const Header = ({ title }) => {
-  // ডামি বা লোকাল স্টোরেজ থেকে এডমিন ডেটা স্টেট
   const [adminData, setAdminData] = useState({
     fullName: 'Admin User',
     role: 'SUPER_ADMIN'
   });
+
+  useEffect(() => {
+    // লোকালস্টোরেজ থেকে ইউজারের রিয়েল ডাটা লোড করার ফাংশন
+    const fetchAdminData = () => {
+      const storedUser = localStorage.getItem('user');
+      if (storedUser) {
+        try {
+          const parsedUser = JSON.parse(storedUser);
+          setAdminData({
+            fullName: parsedUser.fullName || parsedUser.name || 'Admin User',
+            role: parsedUser.role || 'SUPER_ADMIN'
+          });
+        } catch (err) {
+          console.error('Failed to parse user data from localStorage', err);
+        }
+      }
+    };
+
+    // প্রথমবার কম্পোনেন্ট লোড হলে ডাটা আনবে
+    fetchAdminData();
+
+    // Settings পেজে আপডেট করার পর হেডার রিয়েল-টাইম আপডেট করার জন্য লিসেনার
+    window.addEventListener('adminUpdated', fetchAdminData);
+
+    return () => {
+      window.removeEventListener('adminUpdated', fetchAdminData);
+    };
+  }, []);
 
   // নাম থেকে ইনিশিয়াল বের করার হেল্পার ফাংশন
   const getInitials = (name) => {
